@@ -1,4 +1,4 @@
-# goroedis
+# goodies
 Apprentice of chaotic gods attempt to create redis like library using Go magic.
 I hope this experiemnt doesn't destroy someones inner peace.
 
