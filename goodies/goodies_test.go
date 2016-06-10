@@ -3,7 +3,7 @@ package goodies
 import "testing"
 
 func TestGoodiesCache(testing *testing.T) {
-	goodies := CreateGoodies()
+	goodies := NewGoodies()
 
 	key := "test"
 	expected := "expected"
@@ -23,7 +23,6 @@ func TestGoodiesCache(testing *testing.T) {
 		expectedList := lst.(*[]int)
 		if (*expectedList)[4] != 5 {
 			testing.Error("List reading failed")
-
 		}
 	} else {
 		testing.Error("List not found")
