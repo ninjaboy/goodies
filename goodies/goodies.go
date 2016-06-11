@@ -6,9 +6,9 @@ import "time"
 
 // Goodies bag
 type Goodies struct {
-	Storage       map[string]GItem
-	Lock          sync.RWMutex
-	DefaultExpiry time.Duration
+	storage       map[string]GItem
+	lock          sync.RWMutex
+	defaultExpiry time.Duration
 }
 
 // GItem is internal Goodies item
@@ -27,27 +27,27 @@ const (
 // NewGoodies creates new isntance of goodiebag
 func NewGoodies(ttl time.Duration) *Goodies {
 	return &Goodies{
-		Storage:       make(map[string]GItem),
-		DefaultExpiry: ttl,
+		storage:       make(map[string]GItem),
+		defaultExpiry: ttl,
 	}
 }
 
 // Set Method
 func (g *Goodies) Set(key string, value interface{}, ttl time.Duration) {
-	g.Lock.Lock()
-	defer g.Lock.Unlock()
-	g.Storage[key] = GItem{
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	g.storage[key] = GItem{
 		Value:  value,
-		Expiry: getExpiry(ttl, g.DefaultExpiry),
+		Expiry: getExpiry(ttl, g.defaultExpiry),
 	}
 }
 
 // Get Method
 func (g *Goodies) Get(key string) (interface{}, bool) {
-	g.Lock.RLock()
-	defer g.Lock.RUnlock()
+	g.lock.RLock()
+	defer g.lock.RUnlock()
 
-	val, found := g.Storage[key]
+	val, found := g.storage[key]
 	if !found {
 		return nil, false
 	}
@@ -65,18 +65,18 @@ func (g *Goodies) Update(key string, value interface{}, ttl time.Duration) {
 
 // Remove key from storage
 func (g *Goodies) Remove(key string) {
-	g.Lock.Lock()
-	defer g.Lock.Unlock()
-	delete(g.Storage, key)
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	delete(g.storage, key)
 }
 
 // Keys returns list of keys
 func (g *Goodies) Keys() []string {
-	g.Lock.RLock()
-	defer g.Lock.RUnlock()
-	keys := make([]string, len(g.Storage))
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+	keys := make([]string, len(g.storage))
 	i := 0
-	for k := range g.Storage {
+	for k := range g.storage {
 		keys[i] = k
 		i++
 	}
@@ -89,7 +89,7 @@ func getExpiry(ttl time.Duration, def time.Duration) int64 {
 		ttl = def
 	}
 	if ttl > 0 {
-		expiry = time.Now().Add(ttl).UnixNano()
+		expiry = time.Now().Add(ttl).Unix()
 	}
 	return expiry
 }
@@ -99,7 +99,7 @@ func checkExpiry(expiry int64) bool {
 		//never expires
 		return false
 	}
-	if time.Now().UnixNano() > expiry {
+	if time.Now().Unix() > expiry {
 		return true
 	}
 	return false

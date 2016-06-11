@@ -49,4 +49,8 @@ func TestGoodiesExpiry(testing *testing.T) {
 	if _, found := goodies.Get("nonexp"); !found {
 		testing.Error("Non expired item has been removed")
 	}
+
+func TestGoodies()  {
+	
+}
 }

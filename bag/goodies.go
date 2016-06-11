@@ -1,8 +1,0 @@
-package bag
-
-
-
-type Goodies {
-   
-
-}
