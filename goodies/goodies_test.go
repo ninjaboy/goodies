@@ -50,7 +50,9 @@ func TestGoodiesExpiry(testing *testing.T) {
 		testing.Error("Non expired item has been removed")
 	}
 
-func TestGoodies()  {
-	
 }
+
+func TestGoodiesPersisted(testing *testing.T) {
+	goodies := NewGoodiesPersisted(25 * time.Second, "goodies_test.dat")
+	
 }

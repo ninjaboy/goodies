@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"goodies/goodies"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +15,7 @@ import (
 )
 
 func main() {
-	g := goodies.NewGoodies(1 * time.Minute)
+	g := goodies.NewGoodies(1*time.Minute, "./goodies.dat", 30*time.Second)
 
 	e := echo.New()
 	e.SetDebug(true)
@@ -56,7 +58,15 @@ func main() {
 		return c.String(http.StatusOK, res)
 	})
 
-	e.Run(fasthttp.New(":6009"))
+	go e.Run(fasthttp.New(":6009"))
+	fmt.Println("Enter any text to exit")
+	reader := bufio.NewReader(os.Stdin)
+	_, _, err := reader.ReadRune()
+	if err != nil {
+		fmt.Println(err)
+	}
 
+	g.Stop()
+	<-time.After(1 * time.Second)
 	fmt.Println("Bye")
 }

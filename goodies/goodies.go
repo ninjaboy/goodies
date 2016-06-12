@@ -1,18 +1,23 @@
 package goodies
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 import "time"
 
 // Goodies bag
 type Goodies struct {
-	storage       map[string]GItem
+	storage       map[string]gItem
 	lock          sync.RWMutex
 	defaultExpiry time.Duration
+	persister     *Persister
+	stop          chan bool
 }
 
-// GItem is internal Goodies item
-type GItem struct {
+// gItem is internal Goodies item
+type gItem struct {
 	Value  interface{}
 	Expiry int64
 }
@@ -25,18 +30,76 @@ const (
 )
 
 // NewGoodies creates new isntance of goodiebag
-func NewGoodies(ttl time.Duration) *Goodies {
-	return &Goodies{
-		storage:       make(map[string]GItem),
-		defaultExpiry: ttl,
+func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duration) *Goodies {
+	var persister *Persister
+	initialStorage := make(map[string]gItem)
+	if filename != "" {
+		persister = NewPersister(filename, persistInterval)
+		err := persister.Load(&initialStorage)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
+	goodies := &Goodies{
+		storage:       initialStorage,
+		defaultExpiry: ttl,
+		stop:          make(chan bool),
+	}
+
+	if filename != "" {
+		go goodies.runPersister(persister)
+	}
+
+	return goodies
+}
+
+func (g *Goodies) Stop() {
+	g.stop <- true
+}
+
+func (g *Goodies) runPersister(p *Persister) {
+	persistTrigger := time.NewTicker(p.interval)
+	for {
+		select {
+		case <-persistTrigger.C:
+
+			//fmt.Println("Saving blob")
+			g.Cleanup()
+			if err := p.Save(g.getBlob()); err != nil {
+				fmt.Printf("Backup not saved %v\n", err)
+			}
+		case <-g.stop:
+			g.Cleanup()
+			//fmt.Println("Saving blob")
+			if err := p.Save(g.getBlob()); err != nil {
+				fmt.Printf("Backup not saved %v\n", err)
+			}
+			return
+		}
+	}
+}
+
+func (g *Goodies) Cleanup() {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	for key, value := range g.storage {
+		if checkExpiry(value.Expiry) {
+			delete(g.storage, key)
+		}
+	}
+}
+
+func (g *Goodies) getBlob() map[string]gItem {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	return g.storage
 }
 
 // Set Method
 func (g *Goodies) Set(key string, value interface{}, ttl time.Duration) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	g.storage[key] = GItem{
+	g.storage[key] = gItem{
 		Value:  value,
 		Expiry: getExpiry(ttl, g.defaultExpiry),
 	}
