@@ -1,6 +1,7 @@
 package goodies
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -29,7 +30,7 @@ const (
 	ExpireDefault time.Duration = -2
 )
 
-// NewGoodies creates new isntance of goodiebag
+// NewGoodies creates new instance of goodiebag
 func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duration) *Goodies {
 	var persister *Persister
 	initialStorage := make(map[string]gItem)
@@ -40,6 +41,7 @@ func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duratio
 			fmt.Println(err)
 		}
 	}
+
 	goodies := &Goodies{
 		storage:       initialStorage,
 		defaultExpiry: ttl,
@@ -51,48 +53,6 @@ func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duratio
 	}
 
 	return goodies
-}
-
-func (g *Goodies) Stop() {
-	g.stop <- true
-}
-
-func (g *Goodies) runPersister(p *Persister) {
-	persistTrigger := time.NewTicker(p.interval)
-	for {
-		select {
-		case <-persistTrigger.C:
-
-			//fmt.Println("Saving blob")
-			g.Cleanup()
-			if err := p.Save(g.getBlob()); err != nil {
-				fmt.Printf("Backup not saved %v\n", err)
-			}
-		case <-g.stop:
-			g.Cleanup()
-			//fmt.Println("Saving blob")
-			if err := p.Save(g.getBlob()); err != nil {
-				fmt.Printf("Backup not saved %v\n", err)
-			}
-			return
-		}
-	}
-}
-
-func (g *Goodies) Cleanup() {
-	g.lock.Lock()
-	defer g.lock.Unlock()
-	for key, value := range g.storage {
-		if checkExpiry(value.Expiry) {
-			delete(g.storage, key)
-		}
-	}
-}
-
-func (g *Goodies) getBlob() map[string]gItem {
-	g.lock.Lock()
-	defer g.lock.Unlock()
-	return g.storage
 }
 
 // Set Method
@@ -121,9 +81,13 @@ func (g *Goodies) Get(key string) (interface{}, bool) {
 	return val.Value, found
 }
 
-// Update method (at the moment not clear how it should be different to Set)
-func (g *Goodies) Update(key string, value interface{}, ttl time.Duration) {
+// Update method
+func (g *Goodies) Update(key string, value interface{}, ttl time.Duration) (interface{}, error) {
+	if _, found := g.Get(key); !found {
+		return nil, errors.New("Key " + key + " doesn't exist")
+	}
 	g.Set(key, value, ttl)
+	return value, nil
 }
 
 // Remove key from storage
@@ -144,6 +108,60 @@ func (g *Goodies) Keys() []string {
 		i++
 	}
 	return keys
+}
+
+func (g *Goodies) ListAdd(key string, value interface{}, ttl time.Duration) {
+
+}
+
+func (g *Goodies) ListRemove(key string, index int) error {
+	return nil
+}
+
+func (g *Goodies) DictSet(key string, value interface{}) {
+
+}
+
+//Stop method is a nice way to clearly stop the cache
+func (g *Goodies) Stop() {
+	g.stop <- true
+}
+
+func (g *Goodies) runPersister(p *Persister) {
+	persistTrigger := time.NewTicker(p.interval)
+	for {
+		select {
+		case <-persistTrigger.C:
+			//fmt.Println("Saving blob")
+			g.cleanupOutdated()
+			if err := p.Save(g.getBlob()); err != nil {
+				fmt.Printf("Backup not saved %v\n", err)
+			}
+		case <-g.stop:
+			g.cleanupOutdated()
+			//fmt.Println("Saving blob")
+			if err := p.Save(g.getBlob()); err != nil {
+				fmt.Printf("Backup not saved %v\n", err)
+			}
+			return
+		}
+	}
+}
+
+func (g *Goodies) cleanupOutdated() {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	for key, value := range g.storage {
+		if checkExpiry(value.Expiry) {
+			delete(g.storage, key)
+		}
+	}
+}
+
+func (g *Goodies) getBlob() map[string]gItem {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	return g.storage
 }
 
 func getExpiry(ttl time.Duration, def time.Duration) int64 {

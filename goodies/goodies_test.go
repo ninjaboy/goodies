@@ -4,7 +4,7 @@ import "testing"
 import "time"
 
 func TestGoodiesCacheAdd(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever)
+	goodies := NewGoodies(ExpireNever, )
 
 	key := "test"
 	expected := "expected"
@@ -53,6 +53,9 @@ func TestGoodiesExpiry(testing *testing.T) {
 }
 
 func TestGoodiesPersisted(testing *testing.T) {
-	goodies := NewGoodiesPersisted(25 * time.Second, "goodies_test.dat")
-	
+	filename := "goodies_test.dat"
+	goodies := NewGoodies(25*time.Second, filename, 50*time.Millisecond)
+	goodies.Set("test", "expected")
+	goodies.Stop()
+	goodies2 := NewGoodies(2*time.Second, filename, 30*time.Second)
 }
