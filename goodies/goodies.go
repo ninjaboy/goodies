@@ -23,6 +23,14 @@ type gItem struct {
 	Expiry int64
 }
 
+type goodiesError struct {
+	err string
+}
+
+func (e *goodiesError) Error() string {
+	return e.err
+}
+
 const (
 	//ExpireNever Use this value when adding value to cache to make element last forever
 	ExpireNever time.Duration = -1
@@ -110,9 +118,46 @@ func (g *Goodies) Keys() []string {
 	return keys
 }
 
-// ListAdd Placeholder for add to list function
-func (g *Goodies) ListAdd(key string, value interface{}, ttl time.Duration) {
+// ListPush Adds a value into the end of list. Creates a list if it doesn't exist
+// An error will be returned in case
+func (g *Goodies) ListPush(key string, value interface{}, ttl time.Duration) error {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	found, err := g.checkListExists(key)
+	if err != nil {
+		return err
+	}
+	if !found {
+		g.storage[key] = gItem{createList(value), getExpiry(ttl, g.defaultExpiry)}
+	} else {
+		if expired := checkExpiry(g.storage[key].Expiry); expired {
+			g.storage[key] = gItem{createList(value), getExpiry(ttl, g.defaultExpiry)}
+		} else {
+			list := g.storage[key].Value
+			list = append(list.([]interface{}), value)
+			g.storage[key] = gItem{list, g.storage[key].Expiry}
+		}
+	}
+	return nil
+}
 
+// ListLen Returns the length of list. Returns 0 if list not found
+// Returns error if value stored is not a list
+func (g *Goodies) ListLen(key string) (int, error) {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+	found, err := g.checkListExists(key)
+	if err != nil {
+		return -1, err
+	}
+	if !found {
+		return 0, nil
+	}
+	if expired := checkExpiry(g.storage[key].Expiry); expired {
+		delete(g.storage, key)
+		return 0, nil
+	}
+	return len(g.storage[key].Value.([]interface{})), nil
 }
 
 // ListRemove Placeholder for remove from list function
@@ -185,4 +230,22 @@ func checkExpiry(expiry int64) bool {
 		return true
 	}
 	return false
+}
+
+func (g *Goodies) checkListExists(key string) (bool, error) {
+	val, ok := g.storage[key]
+	if !ok {
+		return false, nil
+	}
+	switch val.Value.(type) {
+	case []interface{}:
+		return true, nil
+	}
+	return false, &goodiesError{fmt.Sprintf("Item %v is not a list", key)}
+}
+
+func createList(value interface{}) []interface{} {
+	newList := make([]interface{}, 1)
+	newList[0] = value
+	return newList
 }

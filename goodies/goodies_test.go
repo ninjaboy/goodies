@@ -67,3 +67,29 @@ func TestGoodiesPersisted(testing *testing.T) {
 	}
 	goodies2.Stop()
 }
+
+func TestGoodiesNotAListError(testing *testing.T) {
+	goodies := NewGoodies(25*time.Millisecond, "", 0)
+	goodies.Set("value", 1, ExpireNever)
+	err := goodies.ListPush("value", 1, ExpireNever)
+	if err == nil {
+		testing.Error("Type check for list push doesn't work")
+	}
+	_, err2 := goodies.ListLen("value")
+	if err2 == nil {
+		testing.Error("Type check for list len doesn't work")
+	}
+}
+
+func TestGoodiesSimpleListOps(testing *testing.T) {
+	goodies := NewGoodies(25*time.Millisecond, "", 0)
+	goodies.ListPush("list", "Join the", ExpireNever)
+	goodies.ListPush("list", "Dark Side", ExpireNever) //TODO: Rubbish API design. Rethinking required (e.g. g.SetExpire(key))
+	len, err := goodies.ListLen("list")
+	if err != nil {
+		testing.Error("List was not created on push")
+	}
+	if len != 2 {
+		testing.Error("List of incorrect size")
+	}
+}
