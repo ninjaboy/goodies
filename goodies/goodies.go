@@ -63,14 +63,24 @@ func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duratio
 	return goodies
 }
 
+func (g *Goodies) newItem(value interface{}, ttl time.Duration) gItem {
+	return gItem{
+		Value:  value,
+		Expiry: getExpiry(ttl, g.defaultExpiry),
+	}
+}
+func (g *Goodies) newItemWithExpiry(value interface{}, expiry int64) gItem {
+	return gItem{
+		Value:  value,
+		Expiry: expiry,
+	}
+}
+
 // Set Method
 func (g *Goodies) Set(key string, value interface{}, ttl time.Duration) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	g.storage[key] = gItem{
-		Value:  value,
-		Expiry: getExpiry(ttl, g.defaultExpiry),
-	}
+	g.storage[key] = g.newItem(value, ttl)
 }
 
 // Get Method
@@ -128,14 +138,14 @@ func (g *Goodies) ListPush(key string, value interface{}, ttl time.Duration) err
 		return err
 	}
 	if !found {
-		g.storage[key] = gItem{createList(value), getExpiry(ttl, g.defaultExpiry)}
+		g.storage[key] = g.newItem(createList(value), ttl)
 	} else {
 		if expired := checkExpiry(g.storage[key].Expiry); expired {
-			g.storage[key] = gItem{createList(value), getExpiry(ttl, g.defaultExpiry)}
+			g.storage[key] = g.newItem(createList(value), ttl)
 		} else {
 			list := g.storage[key].Value
 			list = append(list.([]interface{}), value)
-			g.storage[key] = gItem{list, g.storage[key].Expiry}
+			g.storage[key] = g.newItemWithExpiry(list, g.storage[key].Expiry)
 		}
 	}
 	return nil
