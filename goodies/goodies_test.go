@@ -1,10 +1,12 @@
 package goodies
 
-import "testing"
-import "time"
+import (
+	"testing"
+	"time"
+)
 
 func TestGoodiesCacheAdd(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever, )
+	goodies := NewGoodies(ExpireNever, "", 0)
 
 	key := "test"
 	expected := "expected"
@@ -20,7 +22,7 @@ func TestGoodiesCacheAdd(testing *testing.T) {
 }
 
 func TestGoodiesAddList(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever)
+	goodies := NewGoodies(ExpireNever, "", 0)
 	list := []int{1, 2, 3, 4, 5}
 	goodies.Set("list", &list, ExpireNever)
 	if lst, found := goodies.Get("list"); found {
@@ -34,28 +36,34 @@ func TestGoodiesAddList(testing *testing.T) {
 }
 
 func TestGoodiesExpiry(testing *testing.T) {
-	goodies := NewGoodies(25 * time.Millisecond)
+	goodies := NewGoodies(25*time.Millisecond, "", 0)
 	goodies.Set("nonexp", 1, ExpireNever)
 	goodies.Set("exp", 1, ExpireDefault)
 	<-time.After(10 * time.Millisecond)
 	if _, found := goodies.Get("exp"); !found {
 		testing.Error("Expired too soon")
 	}
-	<-time.After(15 * time.Millisecond)
+	<-time.After(30 * time.Millisecond)
 	if _, found := goodies.Get("exp"); found {
 		testing.Error("Not expired but expected to have expired")
 	}
 	<-time.After(1000 * time.Millisecond)
 	if _, found := goodies.Get("nonexp"); !found {
-		testing.Error("Non expired item has been removed")
+		testing.Error("Non expired item cannot be found")
 	}
-
 }
 
 func TestGoodiesPersisted(testing *testing.T) {
 	filename := "goodies_test.dat"
-	goodies := NewGoodies(25*time.Second, filename, 50*time.Millisecond)
-	goodies.Set("test", "expected")
+	goodies := NewGoodies(25*time.Second, filename, 50*time.Second)
+	expected := "expected"
+	goodies.Set("test", expected, ExpireDefault)
 	goodies.Stop()
+	<-time.After(1000 * time.Millisecond)
 	goodies2 := NewGoodies(2*time.Second, filename, 30*time.Second)
+	received, ok := goodies2.Get("test")
+	if !ok || (received != expected) {
+		testing.Error("Basic persistence test failed")
+	}
+	goodies2.Stop()
 }

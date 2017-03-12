@@ -12,6 +12,7 @@ type Persister struct {
 	interval time.Duration
 }
 
+// NewPersister Creates file based persister
 func NewPersister(filename string, interval time.Duration) *Persister {
 	persister := &Persister{
 		stop:     make(chan bool),
@@ -21,6 +22,7 @@ func NewPersister(filename string, interval time.Duration) *Persister {
 	return persister
 }
 
+// Load Load blob from file storage
 func (p *Persister) Load(data interface{}) error {
 	file, err := os.Open(p.filename)
 	if err == nil {
@@ -31,6 +33,7 @@ func (p *Persister) Load(data interface{}) error {
 	return err
 }
 
+// Save Save blob to file storage
 func (p *Persister) Save(data interface{}) error {
 	file, err := os.Create(p.filename)
 	if err == nil {

@@ -69,13 +69,13 @@ func (g *Goodies) Set(key string, value interface{}, ttl time.Duration) {
 func (g *Goodies) Get(key string) (interface{}, bool) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
-
 	val, found := g.storage[key]
 	if !found {
 		return nil, false
 	}
 
 	if expired := checkExpiry(val.Expiry); expired {
+		delete(g.storage, key) //remove outdated value
 		return nil, false
 	}
 	return val.Value, found
@@ -110,14 +110,17 @@ func (g *Goodies) Keys() []string {
 	return keys
 }
 
+// ListAdd Placeholder for add to list function
 func (g *Goodies) ListAdd(key string, value interface{}, ttl time.Duration) {
 
 }
 
+// ListRemove Placeholder for remove from list function
 func (g *Goodies) ListRemove(key string, index int) error {
 	return nil
 }
 
+// DictSet Placeholder for add to dictionary function
 func (g *Goodies) DictSet(key string, value interface{}) {
 
 }
@@ -132,14 +135,12 @@ func (g *Goodies) runPersister(p *Persister) {
 	for {
 		select {
 		case <-persistTrigger.C:
-			//fmt.Println("Saving blob")
 			g.cleanupOutdated()
 			if err := p.Save(g.getBlob()); err != nil {
 				fmt.Printf("Backup not saved %v\n", err)
 			}
 		case <-g.stop:
 			g.cleanupOutdated()
-			//fmt.Println("Saving blob")
 			if err := p.Save(g.getBlob()); err != nil {
 				fmt.Printf("Backup not saved %v\n", err)
 			}
@@ -170,7 +171,7 @@ func getExpiry(ttl time.Duration, def time.Duration) int64 {
 		ttl = def
 	}
 	if ttl > 0 {
-		expiry = time.Now().Add(ttl).Unix()
+		expiry = time.Now().Add(ttl).UnixNano()
 	}
 	return expiry
 }
@@ -180,7 +181,7 @@ func checkExpiry(expiry int64) bool {
 		//never expires
 		return false
 	}
-	if time.Now().Unix() > expiry {
+	if time.Now().UnixNano() > expiry {
 		return true
 	}
 	return false
