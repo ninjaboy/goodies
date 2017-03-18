@@ -1,6 +1,7 @@
 package goodies
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -22,28 +23,12 @@ type gItem struct {
 	Expiry int64
 }
 
-type TypeMismatchError struct {
+type goodiesError struct {
 	err string
 }
 
-func (e TypeMismatchError) Error() string {
+func (e *goodiesError) Error() string {
 	return e.err
-}
-
-type NotFoundError struct {
-	key string
-}
-
-func (e NotFoundError) Error() string {
-	return fmt.Sprintf("Item for key: %v not found", e.key)
-}
-
-type DictKeyNotFound struct {
-	key string
-}
-
-func (e DictKeyNotFound) Error() string {
-	return fmt.Sprintf("Item for key: %v was not found in a dictionary", e.key)
 }
 
 const (
@@ -81,7 +66,6 @@ func (g Goodies) newItem(value interface{}, ttl time.Duration) gItem {
 		Expiry: getExpiry(ttl, g.defaultExpiry),
 	}
 }
-
 func newItemWithExpiry(value interface{}, expiry int64) gItem {
 	return gItem{
 		Value:  value,
@@ -90,49 +74,48 @@ func newItemWithExpiry(value interface{}, expiry int64) gItem {
 }
 
 // Set Method
-func (g *Goodies) Set(key string, value string, ttl time.Duration) error {
+func (g *Goodies) Set(key string, value interface{}, ttl time.Duration) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	_, err := g.internalGetString(key)
-	if err != nil {
-		switch err.(type) {
-		case NotFoundError:
-			g.internalSet(key, value, ttl)
-			return nil
-		default:
-			return err
-		}
-	}
 	g.internalSet(key, value, ttl)
-	return nil
 }
 
-func (g *Goodies) internalSet(key string, value string, ttl time.Duration) {
+func (g *Goodies) internalSet(key string, value interface{}, ttl time.Duration) {
 	g.storage[key] = g.newItem(value, ttl)
 }
 
 // Get Method
-func (g *Goodies) Get(key string) (string, error) {
+func (g *Goodies) Get(key string) (interface{}, bool) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
-	return g.internalGetString(key)
+	return g.internalGet(key)
+}
+
+func (g *Goodies) internalGet(key string) (interface{}, bool) {
+	val, found := g.storage[key]
+	if !found {
+		return nil, false
+	}
+
+	if expired := checkExpiry(val.Expiry); expired {
+		g.internalRemove(key)
+		return nil, false
+	}
+	return val.Value, found
 }
 
 // Update method
-// Returns NotFoundError if an item doesn't exist
-// Returns TypeMismatchError if an item is not of a string type
-func (g *Goodies) Update(key string, value string, ttl time.Duration) error {
+func (g *Goodies) Update(key string, value interface{}, ttl time.Duration) (interface{}, error) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	_, err := g.internalGetString(key)
-	if err != nil {
-		return err
+	if _, found := g.internalGet(key); !found {
+		return nil, errors.New("Key " + key + " doesn't exist")
 	}
 	g.internalSet(key, value, ttl)
-	return nil
+	return value, nil
 }
 
-// Remove key from storage (removes item of any type)
+// Remove key from storage
 func (g *Goodies) Remove(key string) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
@@ -158,7 +141,7 @@ func (g *Goodies) Keys() []string {
 
 // ListPush Adds a value into the end of list. Creates a list if it doesn't exist
 // An error will be returned in case
-func (g *Goodies) ListPush(key string, value string) error {
+func (g *Goodies) ListPush(key string, value interface{}) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -179,14 +162,15 @@ func (g *Goodies) ListPush(key string, value string) error {
 // ListLen Returns the length of list. Returns 0 if list not found
 // Returns error if value stored is not a list
 func (g *Goodies) ListLen(key string) (int, error) {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
 	list, err := g.internalGetList(key)
 	if err != nil {
-		switch err.(type) {
-		case NotFoundError:
-			return 0, nil //No error if the list is just not found
-		default:
-			return 0, err
-		}
+		return 0, err
+	}
+	if list == nil {
+		return 0, nil
 	}
 
 	return len(list), nil
@@ -196,8 +180,8 @@ func (g *Goodies) ListLen(key string) (int, error) {
 // Returns no error if item was removed or not found
 // Returns error if key is not pointing to a list
 func (g *Goodies) ListRemoveIndex(key string, index int) error {
-	g.lock.Lock()
-	defer g.lock.Unlock()
+	g.lock.RLock()
+	defer g.lock.RUnlock()
 	list, err := g.internalGetList(key)
 	if err != nil {
 		return err
@@ -216,9 +200,9 @@ func (g *Goodies) ListRemoveIndex(key string, index int) error {
 
 //ListRemoveValue Removes all value occurences from the list
 //Return error only if the referenced item is not a list
-func (g *Goodies) ListRemoveValue(key string, value string) error {
-	g.lock.Lock()
-	defer g.lock.Unlock()
+func (g *Goodies) ListRemoveValue(key string, value interface{}) error {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
 
 	list, err := g.internalGetList(key)
 	if err != nil {
@@ -228,7 +212,7 @@ func (g *Goodies) ListRemoveValue(key string, value string) error {
 		return nil
 	}
 
-	var result []string
+	var result []interface{} //Memory consuming but O(n) :)
 	for _, val := range list {
 		if val == value {
 			continue
@@ -240,53 +224,25 @@ func (g *Goodies) ListRemoveValue(key string, value string) error {
 	return nil
 }
 
-// DictSet Sets a value for a specific dictionary key in storage
-// Returns an error if referenced item is not a dictionary
-func (g *Goodies) DictSet(key string, dictKey string, value string) error {
-	g.lock.Lock()
-	defer g.lock.Unlock()
+func (g *Goodies) ListGetRange(key string, startIndex int, endIndex int) {
 
-	dict, err := g.internalGetDict(key)
-	if err != nil {
-		return err
-	}
-	if dict == nil {
-		dict := make(map[string]interface{}, 1)
-		dict[dictKey] = value
-		g.storage[key] = g.newItem(dict, g.defaultExpiry)
-		return nil
-	}
-	dict[key] = value
-	g.storage[key] = newItemWithExpiry(dict, g.storage[key].Expiry)
-	return nil
 }
 
-// DictGet returns a value for a dictionary by a key
-// Returns an error if referenced item is not a dictionary
-func (g *Goodies) DictGet(key string, dictKey string) (string, error) {
-	g.lock.RLock()
-	defer g.lock.RUnlock()
-
-	dict, err := g.internalGetDict(key)
-	if err != nil {
-		return "", err
+func (g *Goodies) internalGetList(key string) ([]interface{}, error) {
+	value, found := g.internalGet(key)
+	if !found {
+		return nil, nil
 	}
-	val, ok := dict[dictKey]
-	if !ok {
-		return "", &DictKeyNotFound{dictKey}
+	isList := checkValueIsList(value)
+	if !isList {
+		return nil, &goodiesError{fmt.Sprintf("Item %v is not a list", key)}
 	}
-	return val, nil
+	return value.([]interface{}), nil
 }
 
-// DictRemove Remove a specific key from a dictionary
-// Returns an error if referenced item is not a dictionary
-func (g *Goodies) DictRemove(key string, dictKey string) error {
-	return nil
-}
+// DictSet Placeholder for add to dictionary function
+func (g *Goodies) DictSet(key string, dictKey string, value string) {
 
-// DictHasKey Can be used to retreive key existence in a dictionary
-func (g *Goodies) DictHasKey(key string, dictKey string) (bool, error) {
-	return false, nil
 }
 
 // SetExpiry Updates item expiry to the specified ttl value
@@ -298,7 +254,7 @@ func (g *Goodies) SetExpiry(key string, ttl time.Duration) error {
 	value, ok := g.internalGet(key)
 
 	if !ok {
-		return &TypeMismatchError{fmt.Sprintf("Item %v doesn't exist", key)}
+		return &goodiesError{fmt.Sprintf("Item %v doesn't exist", key)}
 	}
 	g.storage[key] = g.newItem(value, ttl)
 	return nil
@@ -326,54 +282,6 @@ func (g *Goodies) runPersister(p *Persister) {
 			return
 		}
 	}
-}
-
-func (g *Goodies) internalGetString(key string) (string, error) {
-	val, found := g.internalGet(key)
-	if !found {
-		return "", &NotFoundError{key}
-	}
-	isString := checkValueIsString(key)
-	if !isString {
-		return "", &TypeMismatchError{fmt.Sprintf("Requested item is not a string")}
-	}
-	return val.(string), nil
-}
-
-func (g *Goodies) internalGet(key string) (interface{}, bool) {
-	val, found := g.storage[key]
-	if !found {
-		return nil, false
-	}
-	if expired := checkExpiry(val.Expiry); expired {
-		g.internalRemove(key)
-		return nil, false
-	}
-	return val.Value, found
-}
-
-func (g *Goodies) internalGetList(key string) ([]string, error) {
-	value, found := g.internalGet(key)
-	if !found {
-		return nil, &NotFoundError{key}
-	}
-	isList := checkValueIsList(value)
-	if !isList {
-		return nil, &TypeMismatchError{fmt.Sprintf("Item %v is not a list", key)}
-	}
-	return value.([]string), nil
-}
-
-func (g *Goodies) internalGetDict(key string) (map[string]string, error) {
-	value, found := g.internalGet(key)
-	if !found {
-		return nil, &NotFoundError{key}
-	}
-	isDict := checkValueIsDict(value)
-	if !isDict {
-		return nil, &TypeMismatchError{fmt.Sprintf("Item %v is not a dictionary", key)}
-	}
-	return value.(map[string]string), nil
 }
 
 // TODO: make cleanup strategy to run every 2 x defaultExpiration or each 10k items
@@ -415,32 +323,16 @@ func checkExpiry(expiry int64) bool {
 	return false
 }
 
-func checkValueIsString(value interface{}) bool {
-	switch value.(type) {
-	case string:
-		return true
-	}
-	return false
-}
-
 func checkValueIsList(value interface{}) bool {
 	switch value.(type) {
-	case []string:
+	case []interface{}:
 		return true
 	}
 	return false
 }
 
-func checkValueIsDict(value interface{}) bool {
-	switch value.(type) {
-	case map[string]string:
-		return true
-	}
-	return false
-}
-
-func createList(value string) []string {
-	newList := make([]string, 1)
+func createList(value interface{}) []interface{} {
+	newList := make([]interface{}, 1)
 	newList[0] = value
 	return newList
 }
