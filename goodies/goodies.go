@@ -63,13 +63,13 @@ func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duratio
 	return goodies
 }
 
-func (g *Goodies) newItem(value interface{}, ttl time.Duration) gItem {
+func (g Goodies) newItem(value interface{}, ttl time.Duration) gItem {
 	return gItem{
 		Value:  value,
 		Expiry: getExpiry(ttl, g.defaultExpiry),
 	}
 }
-func (g *Goodies) newItemWithExpiry(value interface{}, expiry int64) gItem {
+func (g Goodies) newItemWithExpiry(value interface{}, expiry int64) gItem {
 	return gItem{
 		Value:  value,
 		Expiry: expiry,
@@ -80,6 +80,10 @@ func (g *Goodies) newItemWithExpiry(value interface{}, expiry int64) gItem {
 func (g *Goodies) Set(key string, value interface{}, ttl time.Duration) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
+	g.internalSet(key, value, ttl)
+}
+
+func (g *Goodies) internalSet(key string, value interface{}, ttl time.Duration) {
 	g.storage[key] = g.newItem(value, ttl)
 }
 
@@ -87,13 +91,17 @@ func (g *Goodies) Set(key string, value interface{}, ttl time.Duration) {
 func (g *Goodies) Get(key string) (interface{}, bool) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
+	return g.internalGet(key)
+}
+
+func (g *Goodies) internalGet(key string) (interface{}, bool) {
 	val, found := g.storage[key]
 	if !found {
 		return nil, false
 	}
 
 	if expired := checkExpiry(val.Expiry); expired {
-		delete(g.storage, key) //remove outdated value
+		g.internalRemove(key)
 		return nil, false
 	}
 	return val.Value, found
@@ -101,10 +109,12 @@ func (g *Goodies) Get(key string) (interface{}, bool) {
 
 // Update method
 func (g *Goodies) Update(key string, value interface{}, ttl time.Duration) (interface{}, error) {
-	if _, found := g.Get(key); !found {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+	if _, found := g.internalGet(key); !found {
 		return nil, errors.New("Key " + key + " doesn't exist")
 	}
-	g.Set(key, value, ttl)
+	g.internalSet(key, value, ttl)
 	return value, nil
 }
 
@@ -112,6 +122,10 @@ func (g *Goodies) Update(key string, value interface{}, ttl time.Duration) (inte
 func (g *Goodies) Remove(key string) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
+	g.internalRemove(key)
+}
+
+func (g *Goodies) internalRemove(key string) {
 	delete(g.storage, key)
 }
 
@@ -130,7 +144,7 @@ func (g *Goodies) Keys() []string {
 
 // ListPush Adds a value into the end of list. Creates a list if it doesn't exist
 // An error will be returned in case
-func (g *Goodies) ListPush(key string, value interface{}, ttl time.Duration) error {
+func (g *Goodies) ListPush(key string, value interface{}) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	found, err := g.checkListExists(key)
@@ -138,10 +152,10 @@ func (g *Goodies) ListPush(key string, value interface{}, ttl time.Duration) err
 		return err
 	}
 	if !found {
-		g.storage[key] = g.newItem(createList(value), ttl)
+		g.storage[key] = g.newItem(createList(value), g.defaultExpiry)
 	} else {
 		if expired := checkExpiry(g.storage[key].Expiry); expired {
-			g.storage[key] = g.newItem(createList(value), ttl)
+			g.storage[key] = g.newItem(createList(value), g.defaultExpiry)
 		} else {
 			list := g.storage[key].Value
 			list = append(list.([]interface{}), value)
@@ -170,14 +184,49 @@ func (g *Goodies) ListLen(key string) (int, error) {
 	return len(g.storage[key].Value.([]interface{})), nil
 }
 
-// ListRemove Placeholder for remove from list function
-func (g *Goodies) ListRemove(key string, index int) error {
+// ListRemoveIndex Removes list entry
+// Returns no error if item was removed or not found
+// Returns error if key is not pointing to a list
+func (g *Goodies) ListRemoveIndex(key string, index int) error {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+	found, err := g.checkListExists(key)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+	if expired := checkExpiry(g.storage[key].Expiry); expired {
+		delete(g.storage, key)
+		return nil
+	}
+	list := g.storage[key].Value.([]interface{})
+
+	g.storage[key] = g.newItemWithExpiry(
+		append(list[:index], list[index+1:]...),
+		g.storage[key].Expiry)
 	return nil
 }
 
 // DictSet Placeholder for add to dictionary function
 func (g *Goodies) DictSet(key string, value interface{}) {
 
+}
+
+// SetExpiry Updates item expiry to the specified ttl value
+// Returns error in case if item was not found
+func (g *Goodies) SetExpiry(key string, ttl time.Duration) error {
+	g.lock.Lock()
+	defer g.lock.Unlock()
+
+	value, ok := g.internalGet(key)
+
+	if !ok {
+		return &goodiesError{fmt.Sprintf("Item %v doesn't exist", key)}
+	}
+	g.storage[key] = g.newItem(value, ttl)
+	return nil
 }
 
 //Stop method is a nice way to clearly stop the cache
@@ -204,12 +253,13 @@ func (g *Goodies) runPersister(p *Persister) {
 	}
 }
 
+// TODO: make cleanup strategy to run every 2 x defaultExpiration or each 10k items
 func (g *Goodies) cleanupOutdated() {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	for key, value := range g.storage {
 		if checkExpiry(value.Expiry) {
-			delete(g.storage, key)
+			g.internalRemove(key)
 		}
 	}
 }

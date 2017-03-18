@@ -57,11 +57,12 @@ func TestGoodiesPersisted(testing *testing.T) {
 	filename := "goodies_test.dat"
 	goodies := NewGoodies(25*time.Second, filename, 50*time.Second)
 	expected := "expected"
-	goodies.Set("test", expected, ExpireDefault)
+	key := "test"
+	goodies.Set(key, expected, ExpireDefault)
 	goodies.Stop()
 	<-time.After(1000 * time.Millisecond)
 	goodies2 := NewGoodies(2*time.Second, filename, 30*time.Second)
-	received, ok := goodies2.Get("test")
+	received, ok := goodies2.Get(key)
 	if !ok || (received != expected) {
 		testing.Error("Basic persistence test failed")
 	}
@@ -71,7 +72,7 @@ func TestGoodiesPersisted(testing *testing.T) {
 func TestGoodiesNotAListError(testing *testing.T) {
 	goodies := NewGoodies(25*time.Millisecond, "", 0)
 	goodies.Set("value", 1, ExpireNever)
-	err := goodies.ListPush("value", 1, ExpireNever)
+	err := goodies.ListPush("value", 1)
 	if err == nil {
 		testing.Error("Type check for list push doesn't work")
 	}
@@ -81,15 +82,72 @@ func TestGoodiesNotAListError(testing *testing.T) {
 	}
 }
 
+func TestExpiryApi(testing *testing.T) {
+	goodies := NewGoodies(50*time.Millisecond, "", 0)
+	key := "list"
+	err := goodies.ListPush(key, "val")
+	defer goodies.Remove(key)
+	if err != nil {
+		testing.Error("List already exists")
+	}
+
+	<-time.After(100 * time.Millisecond)
+	_, ok := goodies.Get(key)
+	if ok {
+		testing.Error("List expiration doesn't work")
+	}
+
+	err = goodies.ListPush(key, "val2")
+	err = goodies.ListPush(key, "val3")
+	if err != nil {
+		testing.Error("List already exists")
+	}
+	goodies.SetExpiry(key, 150*time.Millisecond)
+	<-time.After(100 * time.Millisecond)
+	len, err2 := goodies.ListLen(key)
+	if err2 != nil {
+		testing.Error("Set new expiration doesn't work")
+	}
+	if len != 2 {
+		testing.Error("Returned list len doesn't match")
+	}
+
+	<-time.After(100 * time.Millisecond)
+	err = goodies.SetExpiry(key, 100*time.Millisecond)
+	if err == nil {
+		testing.Error("Error should be thrown as item is expected to become outdated already")
+	}
+}
+
 func TestGoodiesSimpleListOps(testing *testing.T) {
-	goodies := NewGoodies(25*time.Millisecond, "", 0)
-	goodies.ListPush("list", "Join the", ExpireNever)
-	goodies.ListPush("list", "Dark Side", ExpireNever) //TODO: Rubbish API design. Rethinking required (e.g. g.SetExpire(key))
+	goodies := NewGoodies(ExpireNever, "", 0)
+	key := "list"
+	//ListPush test
+	goodies.ListPush(key, "Where is")
+	goodies.ListPush(key, "the")
+	goodies.ListPush(key, "Money")
+	goodies.ListPush(key, "Lebowski")
+
+	//ListLen test
 	len, err := goodies.ListLen("list")
 	if err != nil {
 		testing.Error("List was not created on push")
 	}
-	if len != 2 {
+	if len != 4 {
 		testing.Error("List of incorrect size")
 	}
+
+	//ListRemove test
+	err = goodies.ListRemoveIndex("list", 0)
+	if err != nil {
+		testing.Error("List doesn't exist")
+	}
+	len, err = goodies.ListLen(key)
+	if err != nil {
+		testing.Errorf("Unexpected error %v", err)
+	}
+	if len != 3 {
+		testing.Error("List of incorrect size")
+	}
+
 }
