@@ -247,3 +247,26 @@ func TestListRemoveByValue(testing *testing.T) {
 		testing.Error("Expected error on removing by value from non list")
 	}
 }
+
+func TestDictOps(testing *testing.T) {
+	goodies := NewGoodies(ExpireNever, "", 0)
+	// key := "dict"
+	// dictKey := "dictKey"
+	goodies.Set("val", 1, ExpireDefault)
+	err := goodies.DictSet("val", "val", 1)
+	if err == nil {
+		testing.Error("Expected error on setting dict value for a non dict item")
+	}
+
+	// goodies.DictSet(key, dictKey, 3.14)
+	// var f float32
+
+	// fval, err2 := goodies.DictGet(key, dictKey)
+	// if err2 != nil {
+	// 	testing.Error("Dictionary set/get didn't work")
+	// }
+	// //f = fval.(float32)
+	// if f != 3.14 {
+	// 	testing.Error("Dictionary set/get didn't return expected value")
+	// }
+}
