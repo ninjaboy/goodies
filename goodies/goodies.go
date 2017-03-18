@@ -44,10 +44,7 @@ func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duratio
 	initialStorage := make(map[string]gItem)
 	if filename != "" {
 		persister = NewPersister(filename, persistInterval)
-		err := persister.Load(&initialStorage)
-		if err != nil {
-			fmt.Println(err)
-		}
+		_ = persister.Load(&initialStorage) //we don't really care about whether there was some data or not
 	}
 
 	goodies := &Goodies{
@@ -69,7 +66,7 @@ func (g Goodies) newItem(value interface{}, ttl time.Duration) gItem {
 		Expiry: getExpiry(ttl, g.defaultExpiry),
 	}
 }
-func (g Goodies) newItemWithExpiry(value interface{}, expiry int64) gItem {
+func newItemWithExpiry(value interface{}, expiry int64) gItem {
 	return gItem{
 		Value:  value,
 		Expiry: expiry,
@@ -147,21 +144,18 @@ func (g *Goodies) Keys() []string {
 func (g *Goodies) ListPush(key string, value interface{}) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	found, err := g.checkListExists(key)
+
+	list, err := g.internalGetList(key)
 	if err != nil {
 		return err
 	}
-	if !found {
+	if list == nil {
 		g.storage[key] = g.newItem(createList(value), g.defaultExpiry)
-	} else {
-		if expired := checkExpiry(g.storage[key].Expiry); expired {
-			g.storage[key] = g.newItem(createList(value), g.defaultExpiry)
-		} else {
-			list := g.storage[key].Value
-			list = append(list.([]interface{}), value)
-			g.storage[key] = g.newItemWithExpiry(list, g.storage[key].Expiry)
-		}
+		return nil
 	}
+
+	list = append(list, value)
+	g.storage[key] = newItemWithExpiry(list, g.storage[key].Expiry)
 	return nil
 }
 
@@ -170,18 +164,16 @@ func (g *Goodies) ListPush(key string, value interface{}) error {
 func (g *Goodies) ListLen(key string) (int, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
-	found, err := g.checkListExists(key)
+
+	list, err := g.internalGetList(key)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
-	if !found {
+	if list == nil {
 		return 0, nil
 	}
-	if expired := checkExpiry(g.storage[key].Expiry); expired {
-		delete(g.storage, key)
-		return 0, nil
-	}
-	return len(g.storage[key].Value.([]interface{})), nil
+
+	return len(list), nil
 }
 
 // ListRemoveIndex Removes list entry
@@ -190,23 +182,58 @@ func (g *Goodies) ListLen(key string) (int, error) {
 func (g *Goodies) ListRemoveIndex(key string, index int) error {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
-	found, err := g.checkListExists(key)
+	list, err := g.internalGetList(key)
 	if err != nil {
 		return err
 	}
-	if !found {
+	if list == nil {
 		return nil
 	}
-	if expired := checkExpiry(g.storage[key].Expiry); expired {
-		delete(g.storage, key)
+	if len(list) <= index {
 		return nil
 	}
-	list := g.storage[key].Value.([]interface{})
-
-	g.storage[key] = g.newItemWithExpiry(
+	g.storage[key] = newItemWithExpiry(
 		append(list[:index], list[index+1:]...),
 		g.storage[key].Expiry)
 	return nil
+}
+
+//ListRemoveValue Removes all value occurences from the list
+//Return error only if the referenced item is not a list
+func (g *Goodies) ListRemoveValue(key string, value interface{}) error {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
+	list, err := g.internalGetList(key)
+	if err != nil {
+		return err
+	}
+	if list == nil {
+		return nil
+	}
+
+	var result []interface{} //Memory consuming but O(n) :)
+	for _, val := range list {
+		if val == value {
+			continue
+		}
+		result = append(result, val)
+	}
+
+	g.storage[key] = newItemWithExpiry(result, g.storage[key].Expiry)
+	return nil
+}
+
+func (g *Goodies) internalGetList(key string) ([]interface{}, error) {
+	value, found := g.internalGet(key)
+	if !found {
+		return nil, nil
+	}
+	isList := checkValueIsList(value)
+	if !isList {
+		return nil, &goodiesError{fmt.Sprintf("Item %v is not a list", key)}
+	}
+	return value.([]interface{}), nil
 }
 
 // DictSet Placeholder for add to dictionary function
@@ -292,16 +319,12 @@ func checkExpiry(expiry int64) bool {
 	return false
 }
 
-func (g *Goodies) checkListExists(key string) (bool, error) {
-	val, ok := g.storage[key]
-	if !ok {
-		return false, nil
-	}
-	switch val.Value.(type) {
+func checkValueIsList(value interface{}) bool {
+	switch value.(type) {
 	case []interface{}:
-		return true, nil
+		return true
 	}
-	return false, &goodiesError{fmt.Sprintf("Item %v is not a list", key)}
+	return false
 }
 
 func createList(value interface{}) []interface{} {

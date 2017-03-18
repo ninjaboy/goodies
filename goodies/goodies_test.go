@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func TestGoodiesCacheAdd(testing *testing.T) {
+func TestGoodiesAddSetUpdate(testing *testing.T) {
 	goodies := NewGoodies(ExpireNever, "", 0)
 
 	key := "test"
@@ -18,6 +18,27 @@ func TestGoodiesCacheAdd(testing *testing.T) {
 		}
 	} else {
 		testing.Error("Getting of even a simple string failed")
+	}
+
+	_, ok := goodies.Get("Non-existent")
+	if ok {
+		testing.Error("Enxpected item found")
+	}
+
+	goodies.Update(key, "new", ExpireDefault)
+	value, found := goodies.Get(key)
+	if !found || value != "new" {
+		testing.Error("Update doesn't work")
+	}
+
+	_, err := goodies.Update("Non-existent", "newer", ExpireDefault)
+	if err == nil {
+		testing.Error("Update of non-existent is expected to throw an error")
+	}
+
+	keys := goodies.Keys()
+	if len(keys) != 1 || keys[0] != key {
+		testing.Error("Keys collection doesn't match expected")
 	}
 }
 
@@ -142,12 +163,87 @@ func TestGoodiesSimpleListOps(testing *testing.T) {
 	if err != nil {
 		testing.Error("List doesn't exist")
 	}
-	len, err = goodies.ListLen(key)
-	if err != nil {
+	len2, err2 := goodies.ListLen(key)
+	if err2 != nil {
 		testing.Errorf("Unexpected error %v", err)
 	}
-	if len != 3 {
+	if len2 != 3 {
 		testing.Error("List of incorrect size")
 	}
 
+	len3, err3 := goodies.ListLen("Non-existent-list")
+	if len3 != 0 || err3 != nil {
+		testing.Error("Unexpected behaviour for non existent list length retreival")
+	}
+
+	err4 := goodies.ListRemoveIndex(key, 100)
+	if err4 != nil {
+		testing.Error("Unexpected behaviour for removing non-existent list item by index")
+	}
+
+	notListKey := "not a list"
+	goodies.Set(notListKey, "I am string!", ExpireDefault)
+	err5 := goodies.ListRemoveIndex(notListKey, 0)
+	if err5 == nil {
+		testing.Error("Removing by index from non list didn't report an error")
+	}
+
+	err6 := goodies.ListRemoveIndex("Non-existent list", 0)
+	if err6 != nil {
+		testing.Error("Unexpected error when removing from non-existent list")
+	}
+}
+
+type Custom struct {
+	i int
+	f float32
+	s string
+}
+
+func TestListRemoveByValue(testing *testing.T) {
+	goodies := NewGoodies(ExpireNever, "", 0)
+	key := "list"
+	simpleStr := "simpleString"
+	i := 100
+	obj := Custom{3, 0.14, "pi"}
+
+	goodies.ListPush(key, simpleStr)
+	goodies.ListPush(key, obj)
+	goodies.ListPush(key, i)
+	goodies.ListPush(key, i)
+	goodies.ListPush(key, obj)
+	goodies.ListPush(key, simpleStr)
+
+	len, err := goodies.ListLen(key)
+	if err != nil || len != 6 {
+		testing.Error("List was created incorrectly")
+	}
+	err = goodies.ListRemoveValue(key, "simpleString")
+	len, err = goodies.ListLen(key)
+	if err != nil || len != 4 {
+		testing.Error("List deletion failed")
+		return
+	}
+	err = goodies.ListRemoveValue(key, Custom{3, 0.14, "pi"})
+	len, err = goodies.ListLen(key)
+	if err != nil || len != 2 {
+		testing.Error("List deletion of struct failed")
+		return
+	}
+	err = goodies.ListRemoveValue(key, 100)
+	len, err = goodies.ListLen(key)
+	if err != nil || len != 0 {
+		testing.Error("List deletion of integer failed")
+		return
+	}
+	err = goodies.ListRemoveValue(key, "Non-existent")
+	if err != nil {
+		testing.Errorf("Unexpected error on removing inexistent value from list by value: %v", err)
+	}
+
+	goodies.Set("valkey", 3.14, ExpireDefault)
+	err = goodies.ListRemoveValue("valkey", "value")
+	if err == nil {
+		testing.Error("Expected error on removing by value from non list")
+	}
 }
