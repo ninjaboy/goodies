@@ -42,10 +42,24 @@ func TestGoodiesAddSetUpdate(testing *testing.T) {
 	}
 }
 
+func TestGoodiesAddList(testing *testing.T) {
+	goodies := NewGoodies(ExpireNever, "", 0)
+	list := []int{1, 2, 3, 4, 5}
+	goodies.Set("list", &list, ExpireNever)
+	if lst, found := goodies.Get("list"); found {
+		expectedList := lst.(*[]int)
+		if (*expectedList)[4] != 5 {
+			testing.Error("List reading failed")
+		}
+	} else {
+		testing.Error("List not found")
+	}
+}
+
 func TestGoodiesExpiry(testing *testing.T) {
 	goodies := NewGoodies(25*time.Millisecond, "", 0)
-	goodies.Set("nonexp", "1", ExpireNever)
-	goodies.Set("exp", "1", ExpireDefault)
+	goodies.Set("nonexp", 1, ExpireNever)
+	goodies.Set("exp", 1, ExpireDefault)
 	<-time.After(10 * time.Millisecond)
 	if _, found := goodies.Get("exp"); !found {
 		testing.Error("Expired too soon")
@@ -78,8 +92,8 @@ func TestGoodiesPersisted(testing *testing.T) {
 
 func TestGoodiesNotAListError(testing *testing.T) {
 	goodies := NewGoodies(25*time.Millisecond, "", 0)
-	goodies.Set("value", "1", ExpireNever)
-	err := goodies.ListPush("value", "1")
+	goodies.Set("value", 1, ExpireNever)
+	err := goodies.ListPush("value", 1)
 	if err == nil {
 		testing.Error("Type check for list push doesn't work")
 	}
@@ -180,37 +194,43 @@ func TestGoodiesSimpleListOps(testing *testing.T) {
 	}
 }
 
+type Custom struct {
+	i int
+	f float32
+	s string
+}
+
 func TestListRemoveByValue(testing *testing.T) {
 	goodies := NewGoodies(ExpireNever, "", 0)
 	key := "list"
-	str1 := "1"
-	str2 := "2"
-	str3 := "3"
+	simpleStr := "simpleString"
+	i := 100
+	obj := Custom{3, 0.14, "pi"}
 
-	goodies.ListPush(key, str1)
-	goodies.ListPush(key, str2)
-	goodies.ListPush(key, str3)
-	goodies.ListPush(key, str1)
-	goodies.ListPush(key, str2)
-	goodies.ListPush(key, str3)
+	goodies.ListPush(key, simpleStr)
+	goodies.ListPush(key, obj)
+	goodies.ListPush(key, i)
+	goodies.ListPush(key, i)
+	goodies.ListPush(key, obj)
+	goodies.ListPush(key, simpleStr)
 
 	len, err := goodies.ListLen(key)
 	if err != nil || len != 6 {
 		testing.Error("List was created incorrectly")
 	}
-	err = goodies.ListRemoveValue(key, str1)
+	err = goodies.ListRemoveValue(key, "simpleString")
 	len, err = goodies.ListLen(key)
 	if err != nil || len != 4 {
 		testing.Error("List deletion failed")
 		return
 	}
-	err = goodies.ListRemoveValue(key, str2)
+	err = goodies.ListRemoveValue(key, Custom{3, 0.14, "pi"})
 	len, err = goodies.ListLen(key)
 	if err != nil || len != 2 {
 		testing.Error("List deletion of struct failed")
 		return
 	}
-	err = goodies.ListRemoveValue(key, str3)
+	err = goodies.ListRemoveValue(key, 100)
 	len, err = goodies.ListLen(key)
 	if err != nil || len != 0 {
 		testing.Error("List deletion of integer failed")
@@ -221,7 +241,7 @@ func TestListRemoveByValue(testing *testing.T) {
 		testing.Errorf("Unexpected error on removing inexistent value from list by value: %v", err)
 	}
 
-	goodies.Set("valkey", "3.14", ExpireDefault)
+	goodies.Set("valkey", 3.14, ExpireDefault)
 	err = goodies.ListRemoveValue("valkey", "value")
 	if err == nil {
 		testing.Error("Expected error on removing by value from non list")
@@ -233,10 +253,10 @@ func TestDictOps(testing *testing.T) {
 	// key := "dict"
 	// dictKey := "dictKey"
 	goodies.Set("val", 1, ExpireDefault)
-	goodies.DictSet("val", "val", "1")
-	// if err == nil {
-	// 	testing.Error("Expected error on setting dict value for a non dict item")
-	// }
+	err := goodies.DictSet("val", "val", 1)
+	if err == nil {
+		testing.Error("Expected error on setting dict value for a non dict item")
+	}
 
 	// goodies.DictSet(key, dictKey, 3.14)
 	// var f float32
