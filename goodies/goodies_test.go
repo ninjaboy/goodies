@@ -179,7 +179,7 @@ func TestGoodiesSimpleListOps(testing *testing.T) {
 	}
 
 	err6 := goodies.ListRemoveIndex("Non-existent list", 0)
-	if _, ok := err6.(NotFoundError); !ok {
+	if err6 != nil {
 		testing.Error("Unexpected error when removing from non-existent list")
 	}
 }
@@ -234,23 +234,28 @@ func TestListRemoveByValue(testing *testing.T) {
 
 func TestDictOps(testing *testing.T) {
 	goodies := NewGoodies(ExpireNever, "", 0)
-	// key := "dict"
-	// dictKey := "dictKey"
+
 	goodies.Set("val", "1", ExpireDefault)
 	err := goodies.DictSet("val", "val", "1")
 	if err == nil {
 		testing.Error("Expected error on setting dict value for a non dict item")
 	}
 
-	// goodies.DictSet(key, dictKey, 3.14)
-	// var f float32
+	key := "dict"
+	dictKey := "dictKey"
+	val := "3.14"
+	goodies.Remove(key)
 
-	// fval, err2 := goodies.DictGet(key, dictKey)
-	// if err2 != nil {
-	// 	testing.Error("Dictionary set/get didn't work")
-	// }
-	// //f = fval.(float32)
-	// if f != 3.14 {
-	// 	testing.Error("Dictionary set/get didn't return expected value")
-	// }
+	err = goodies.DictSet(key, dictKey, val)
+	if err != nil {
+		testing.Errorf("Unexpected error on dict set: %v", err)
+	}
+	val2, err2 := goodies.DictGet(key, dictKey)
+	if err2 != nil {
+		testing.Errorf("Dictionary set/get didn't work: %v", err2)
+	}
+	if val2 != val {
+		testing.Error("Unexpected item received")
+	}
+
 }

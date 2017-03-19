@@ -191,10 +191,12 @@ func (g *Goodies) ListRemoveIndex(key string, index int) error {
 	defer g.lock.Unlock()
 	list, err := g.internalGetList(key)
 	if err != nil {
-		return err
-	}
-	if list == nil {
-		return nil
+		switch err.(type) {
+		case NotFoundError:
+			return nil //No error if the list is just not found
+		default:
+			return err
+		}
 	}
 	if len(list) <= index {
 		return nil
@@ -213,10 +215,12 @@ func (g *Goodies) ListRemoveValue(key string, value string) error {
 
 	list, err := g.internalGetList(key)
 	if err != nil {
-		return err
-	}
-	if list == nil {
-		return nil
+		switch err.(type) {
+		case NotFoundError:
+			return nil //No error if the list is just not found
+		default:
+			return err
+		}
 	}
 
 	var result []string
@@ -231,6 +235,23 @@ func (g *Goodies) ListRemoveValue(key string, value string) error {
 	return nil
 }
 
+// ListGetByIndex Returns an item from a referenced list by index
+// Returns NotFoundError in case if list was not found, TypeMismatchError in case if referenced item is not a list
+func (g *Goodies) ListGetByIndex(key string, index int) (string, error) {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
+	list, err := g.internalGetList(key)
+	if err != nil {
+		return "", err
+	}
+
+	if len(list) <= index {
+		return "", nil
+	}
+	return list[index], nil
+}
+
 // DictSet Sets a value for a specific dictionary key in storage
 // Returns an error if referenced item is not a dictionary
 func (g *Goodies) DictSet(key string, dictKey string, value string) error {
@@ -239,14 +260,17 @@ func (g *Goodies) DictSet(key string, dictKey string, value string) error {
 
 	dict, err := g.internalGetDict(key)
 	if err != nil {
-		return err
+		switch err.(type) {
+		case NotFoundError:
+			dict := make(map[string]string, 1)
+			dict[dictKey] = value
+			g.storage[key] = g.newItem(dict, g.defaultExpiry)
+			return nil
+		default:
+			return err
+		}
 	}
-	if dict == nil {
-		dict := make(map[string]interface{}, 1)
-		dict[dictKey] = value
-		g.storage[key] = g.newItem(dict, g.defaultExpiry)
-		return nil
-	}
+
 	dict[key] = value
 	g.storage[key] = newItemWithExpiry(dict, g.storage[key].Expiry)
 	return nil
@@ -264,7 +288,7 @@ func (g *Goodies) DictGet(key string, dictKey string) (string, error) {
 	}
 	val, ok := dict[dictKey]
 	if !ok {
-		return "", &DictKeyNotFound{dictKey}
+		return "", DictKeyNotFound{dictKey}
 	}
 	return val, nil
 }
@@ -272,12 +296,28 @@ func (g *Goodies) DictGet(key string, dictKey string) (string, error) {
 // DictRemove Remove a specific key from a dictionary
 // Returns an error if referenced item is not a dictionary
 func (g *Goodies) DictRemove(key string, dictKey string) error {
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
+	dict, err := g.internalGetDict(key)
+	if err != nil {
+		return err
+	}
+	delete(dict, dictKey)
 	return nil
 }
 
 // DictHasKey Can be used to retreive key existence in a dictionary
 func (g *Goodies) DictHasKey(key string, dictKey string) (bool, error) {
-	return false, nil
+	g.lock.RLock()
+	defer g.lock.RUnlock()
+
+	dict, err := g.internalGetDict(key)
+	if err != nil {
+		return false, err
+	}
+	_, ok := dict[dictKey]
+	return ok, nil
 }
 
 // SetExpiry Updates item expiry to the specified ttl value
