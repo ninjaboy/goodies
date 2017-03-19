@@ -12,28 +12,32 @@ func TestGoodiesAddSetUpdate(testing *testing.T) {
 	expected := "expected"
 	goodies.Set(key, expected, ExpireNever)
 
-	if value, found := goodies.Get(key); found {
-		if value != expected {
-			testing.Error("Value was found but was incorrect")
-		}
-	} else {
-		testing.Error("Getting of even a simple string failed")
+	value, err := goodies.Get(key)
+	if err != nil {
+		testing.Errorf("Unexpected error on getting value: %v", err)
+	}
+	if value != expected {
+		testing.Error("Unexpected value")
 	}
 
-	_, ok := goodies.Get("Non-existent")
-	if ok {
-		testing.Error("Enxpected item found")
+	_, err = goodies.Get("Non-existent")
+	if _, ok := err.(NotFoundError); !ok {
+		testing.Errorf("Expected NotFoundError but received: %v", err)
 	}
 
-	goodies.Update(key, "new", ExpireDefault)
-	value, found := goodies.Get(key)
-	if !found || value != "new" {
+	err = goodies.Update(key, "new", ExpireDefault)
+	if err != nil {
+		testing.Error("Unexpected error on updating existing value")
+	}
+
+	value, err = goodies.Get(key)
+	if err != nil || value != "new" {
 		testing.Error("Update doesn't work")
 	}
 
-	_, err := goodies.Update("Non-existent", "newer", ExpireDefault)
-	if err == nil {
-		testing.Error("Update of non-existent is expected to throw an error")
+	err = goodies.Update("Non-existent", "newer", ExpireDefault)
+	if _, ok := err.(NotFoundError); !ok {
+		testing.Error("Update of non-existent is expected to throw a not found error")
 	}
 
 	keys := goodies.Keys()
@@ -42,34 +46,20 @@ func TestGoodiesAddSetUpdate(testing *testing.T) {
 	}
 }
 
-func TestGoodiesAddList(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever, "", 0)
-	list := []int{1, 2, 3, 4, 5}
-	goodies.Set("list", &list, ExpireNever)
-	if lst, found := goodies.Get("list"); found {
-		expectedList := lst.(*[]int)
-		if (*expectedList)[4] != 5 {
-			testing.Error("List reading failed")
-		}
-	} else {
-		testing.Error("List not found")
-	}
-}
-
 func TestGoodiesExpiry(testing *testing.T) {
 	goodies := NewGoodies(25*time.Millisecond, "", 0)
-	goodies.Set("nonexp", 1, ExpireNever)
-	goodies.Set("exp", 1, ExpireDefault)
+	goodies.Set("nonexp", "1", ExpireNever)
+	goodies.Set("exp", "1", ExpireDefault)
 	<-time.After(10 * time.Millisecond)
-	if _, found := goodies.Get("exp"); !found {
+	if _, err := goodies.Get("exp"); err != nil {
 		testing.Error("Expired too soon")
 	}
 	<-time.After(30 * time.Millisecond)
-	if _, found := goodies.Get("exp"); found {
+	if _, err := goodies.Get("exp"); err == nil {
 		testing.Error("Not expired but expected to have expired")
 	}
 	<-time.After(1000 * time.Millisecond)
-	if _, found := goodies.Get("nonexp"); !found {
+	if _, err := goodies.Get("nonexp"); err != nil {
 		testing.Error("Non expired item cannot be found")
 	}
 }
@@ -83,8 +73,8 @@ func TestGoodiesPersisted(testing *testing.T) {
 	goodies.Stop()
 	<-time.After(1000 * time.Millisecond)
 	goodies2 := NewGoodies(2*time.Second, filename, 30*time.Second)
-	received, ok := goodies2.Get(key)
-	if !ok || (received != expected) {
+	received, err := goodies2.Get(key)
+	if err != nil || (received != expected) {
 		testing.Error("Basic persistence test failed")
 	}
 	goodies2.Stop()
@@ -92,8 +82,8 @@ func TestGoodiesPersisted(testing *testing.T) {
 
 func TestGoodiesNotAListError(testing *testing.T) {
 	goodies := NewGoodies(25*time.Millisecond, "", 0)
-	goodies.Set("value", 1, ExpireNever)
-	err := goodies.ListPush("value", 1)
+	goodies.Set("value", "1", ExpireNever)
+	err := goodies.ListPush("value", "1")
 	if err == nil {
 		testing.Error("Type check for list push doesn't work")
 	}
@@ -113,8 +103,8 @@ func TestExpiryApi(testing *testing.T) {
 	}
 
 	<-time.After(100 * time.Millisecond)
-	_, ok := goodies.Get(key)
-	if ok {
+	_, err = goodies.Get(key)
+	if _, ok := err.(NotFoundError); !ok {
 		testing.Error("List expiration doesn't work")
 	}
 
@@ -189,48 +179,42 @@ func TestGoodiesSimpleListOps(testing *testing.T) {
 	}
 
 	err6 := goodies.ListRemoveIndex("Non-existent list", 0)
-	if err6 != nil {
+	if _, ok := err6.(NotFoundError); !ok {
 		testing.Error("Unexpected error when removing from non-existent list")
 	}
-}
-
-type Custom struct {
-	i int
-	f float32
-	s string
 }
 
 func TestListRemoveByValue(testing *testing.T) {
 	goodies := NewGoodies(ExpireNever, "", 0)
 	key := "list"
-	simpleStr := "simpleString"
-	i := 100
-	obj := Custom{3, 0.14, "pi"}
+	s1 := "s1"
+	s2 := "s2"
+	s3 := "s3"
 
-	goodies.ListPush(key, simpleStr)
-	goodies.ListPush(key, obj)
-	goodies.ListPush(key, i)
-	goodies.ListPush(key, i)
-	goodies.ListPush(key, obj)
-	goodies.ListPush(key, simpleStr)
+	goodies.ListPush(key, s1)
+	goodies.ListPush(key, s2)
+	goodies.ListPush(key, s3)
+	goodies.ListPush(key, s1)
+	goodies.ListPush(key, s2)
+	goodies.ListPush(key, s3)
 
 	len, err := goodies.ListLen(key)
 	if err != nil || len != 6 {
 		testing.Error("List was created incorrectly")
 	}
-	err = goodies.ListRemoveValue(key, "simpleString")
+	err = goodies.ListRemoveValue(key, "s1")
 	len, err = goodies.ListLen(key)
 	if err != nil || len != 4 {
 		testing.Error("List deletion failed")
 		return
 	}
-	err = goodies.ListRemoveValue(key, Custom{3, 0.14, "pi"})
+	err = goodies.ListRemoveValue(key, s2)
 	len, err = goodies.ListLen(key)
 	if err != nil || len != 2 {
 		testing.Error("List deletion of struct failed")
 		return
 	}
-	err = goodies.ListRemoveValue(key, 100)
+	err = goodies.ListRemoveValue(key, s3)
 	len, err = goodies.ListLen(key)
 	if err != nil || len != 0 {
 		testing.Error("List deletion of integer failed")
@@ -241,7 +225,7 @@ func TestListRemoveByValue(testing *testing.T) {
 		testing.Errorf("Unexpected error on removing inexistent value from list by value: %v", err)
 	}
 
-	goodies.Set("valkey", 3.14, ExpireDefault)
+	goodies.Set("valkey", "3.14", ExpireDefault)
 	err = goodies.ListRemoveValue("valkey", "value")
 	if err == nil {
 		testing.Error("Expected error on removing by value from non list")
@@ -252,8 +236,8 @@ func TestDictOps(testing *testing.T) {
 	goodies := NewGoodies(ExpireNever, "", 0)
 	// key := "dict"
 	// dictKey := "dictKey"
-	goodies.Set("val", 1, ExpireDefault)
-	err := goodies.DictSet("val", "val", 1)
+	goodies.Set("val", "1", ExpireDefault)
+	err := goodies.DictSet("val", "val", "1")
 	if err == nil {
 		testing.Error("Expected error on setting dict value for a non dict item")
 	}

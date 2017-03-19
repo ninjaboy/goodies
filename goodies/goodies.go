@@ -90,21 +90,10 @@ func newItemWithExpiry(value interface{}, expiry int64) gItem {
 }
 
 // Set Method
-func (g *Goodies) Set(key string, value string, ttl time.Duration) error {
+func (g *Goodies) Set(key string, value string, ttl time.Duration) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	_, err := g.internalGetString(key)
-	if err != nil {
-		switch err.(type) {
-		case NotFoundError:
-			g.internalSet(key, value, ttl)
-			return nil
-		default:
-			return err
-		}
-	}
 	g.internalSet(key, value, ttl)
-	return nil
 }
 
 func (g *Goodies) internalSet(key string, value string, ttl time.Duration) {
@@ -164,11 +153,13 @@ func (g *Goodies) ListPush(key string, value string) error {
 
 	list, err := g.internalGetList(key)
 	if err != nil {
-		return err
-	}
-	if list == nil {
-		g.storage[key] = g.newItem(createList(value), g.defaultExpiry)
-		return nil
+		switch err.(type) {
+		case NotFoundError:
+			g.storage[key] = g.newItem(createList(value), g.defaultExpiry)
+			return nil
+		default:
+			return err
+		}
 	}
 
 	list = append(list, value)
@@ -331,11 +322,11 @@ func (g *Goodies) runPersister(p *Persister) {
 func (g *Goodies) internalGetString(key string) (string, error) {
 	val, found := g.internalGet(key)
 	if !found {
-		return "", &NotFoundError{key}
+		return "", NotFoundError{key}
 	}
 	isString := checkValueIsString(key)
 	if !isString {
-		return "", &TypeMismatchError{fmt.Sprintf("Requested item is not a string")}
+		return "", TypeMismatchError{fmt.Sprintf("Requested item is not a string")}
 	}
 	return val.(string), nil
 }
@@ -355,11 +346,11 @@ func (g *Goodies) internalGet(key string) (interface{}, bool) {
 func (g *Goodies) internalGetList(key string) ([]string, error) {
 	value, found := g.internalGet(key)
 	if !found {
-		return nil, &NotFoundError{key}
+		return nil, NotFoundError{key}
 	}
 	isList := checkValueIsList(value)
 	if !isList {
-		return nil, &TypeMismatchError{fmt.Sprintf("Item %v is not a list", key)}
+		return nil, TypeMismatchError{fmt.Sprintf("Item %v is not a list", key)}
 	}
 	return value.([]string), nil
 }
@@ -367,11 +358,11 @@ func (g *Goodies) internalGetList(key string) ([]string, error) {
 func (g *Goodies) internalGetDict(key string) (map[string]string, error) {
 	value, found := g.internalGet(key)
 	if !found {
-		return nil, &NotFoundError{key}
+		return nil, NotFoundError{key}
 	}
 	isDict := checkValueIsDict(value)
 	if !isDict {
-		return nil, &TypeMismatchError{fmt.Sprintf("Item %v is not a dictionary", key)}
+		return nil, TypeMismatchError{fmt.Sprintf("Item %v is not a dictionary", key)}
 	}
 	return value.(map[string]string), nil
 }
