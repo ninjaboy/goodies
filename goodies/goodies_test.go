@@ -21,8 +21,8 @@ func TestGoodiesAddSetUpdate(testing *testing.T) {
 	}
 
 	_, err = goodies.Get("Non-existent")
-	if _, ok := err.(NotFoundError); !ok {
-		testing.Errorf("Expected NotFoundError but received: %v", err)
+	if _, ok := err.(ErrNotFound); !ok {
+		testing.Errorf("Expected ErrNotFound but received: %v", err)
 	}
 
 	err = goodies.Update(key, "new", ExpireDefault)
@@ -36,7 +36,7 @@ func TestGoodiesAddSetUpdate(testing *testing.T) {
 	}
 
 	err = goodies.Update("Non-existent", "newer", ExpireDefault)
-	if _, ok := err.(NotFoundError); !ok {
+	if _, ok := err.(ErrNotFound); !ok {
 		testing.Error("Update of non-existent is expected to throw a not found error")
 	}
 
@@ -104,7 +104,7 @@ func TestExpiryApi(testing *testing.T) {
 
 	<-time.After(100 * time.Millisecond)
 	_, err = goodies.Get(key)
-	if _, ok := err.(NotFoundError); !ok {
+	if _, ok := err.(ErrNotFound); !ok {
 		testing.Error("List expiration doesn't work")
 	}
 

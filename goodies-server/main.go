@@ -2,33 +2,20 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"goodies/goodies"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
 )
 
-type Command struct {
-	Name   string
-	Params []string
-}
-
-func handler(w http.ResponseWriter, r *http.Request) {
-	decoder := json.NewDecoder(r.Body)
-
-	var cmd Command
-	err := decoder.Decode(&cmd)
+func handler(w http.ResponseWriter, r *http.Request, server goodies.CommandServer) {
+	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Fprintf(w, formatError("REQUEST-PARSING-FAILED cannot parse request body"))
-		return
+		panic("Cannot read incoming request")
 	}
-	fmt.Fprintf(w, handleCommand(cmd))
-}
-
-func handleCommand(cmd Command) string {
-	return cmd.Params[0]
+	fmt.Fprintf(w, server.Serve(data))
 }
 
 func formatError(err string) string {
@@ -37,7 +24,11 @@ func formatError(err string) string {
 
 func main() {
 	g := goodies.NewGoodies(1*time.Minute, "./goodies.dat", 30*time.Second)
-	http.HandleFunc("/goodies", handler)
+	cp := goodies.NewGoodiesCommandsProcessor(g)
+	ser := goodies.JsonRequestResponseSerialiser{}
+	server := goodies.HttpServer{cp, ser}
+
+	http.HandleFunc("/goodies", func(w http.ResponseWriter, r *http.Request) { handler(w, r, server) })
 	http.ListenAndServe(":9006", nil) //9006 as for good
 
 	fmt.Println("Enter any text to exit")

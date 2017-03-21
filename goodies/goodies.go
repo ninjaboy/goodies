@@ -22,37 +22,6 @@ type gItem struct {
 	Expiry int64
 }
 
-type TypeMismatchError struct {
-	err string
-}
-
-func (e TypeMismatchError) Error() string {
-	return e.err
-}
-
-type NotFoundError struct {
-	key string
-}
-
-func (e NotFoundError) Error() string {
-	return fmt.Sprintf("Item for key: %v not found", e.key)
-}
-
-type DictKeyNotFound struct {
-	key string
-}
-
-func (e DictKeyNotFound) Error() string {
-	return fmt.Sprintf("Item for key: %v was not found in a dictionary", e.key)
-}
-
-const (
-	//ExpireNever Use this value when adding value to cache to make element last forever
-	ExpireNever time.Duration = -1
-	//ExpireDefault Use this value to use default cache expiration
-	ExpireDefault time.Duration = -2
-)
-
 // NewGoodies creates new instance of goodiebag
 func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duration) *Goodies {
 	var persister *Persister
@@ -93,6 +62,7 @@ func newItemWithExpiry(value interface{}, expiry int64) gItem {
 func (g *Goodies) Set(key string, value string, ttl time.Duration) {
 	g.lock.Lock()
 	defer g.lock.Unlock()
+	//TODO: disallow key to contain ',' for keys serialisation simplification
 	g.internalSet(key, value, ttl)
 }
 
@@ -108,8 +78,8 @@ func (g *Goodies) Get(key string) (string, error) {
 }
 
 // Update method
-// Returns NotFoundError if an item doesn't exist
-// Returns TypeMismatchError if an item is not of a string type
+// Returns ErrNotFound if an item doesn't exist
+// Returns ErrTypeMismatch if an item is not of a string type
 func (g *Goodies) Update(key string, value string, ttl time.Duration) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
@@ -154,7 +124,7 @@ func (g *Goodies) ListPush(key string, value string) error {
 	list, err := g.internalGetList(key)
 	if err != nil {
 		switch err.(type) {
-		case NotFoundError:
+		case ErrNotFound:
 			g.storage[key] = g.newItem(createList(value), g.defaultExpiry)
 			return nil
 		default:
@@ -173,7 +143,7 @@ func (g *Goodies) ListLen(key string) (int, error) {
 	list, err := g.internalGetList(key)
 	if err != nil {
 		switch err.(type) {
-		case NotFoundError:
+		case ErrNotFound:
 			return 0, nil //No error if the list is just not found
 		default:
 			return 0, err
@@ -192,7 +162,7 @@ func (g *Goodies) ListRemoveIndex(key string, index int) error {
 	list, err := g.internalGetList(key)
 	if err != nil {
 		switch err.(type) {
-		case NotFoundError:
+		case ErrNotFound:
 			return nil //No error if the list is just not found
 		default:
 			return err
@@ -216,7 +186,7 @@ func (g *Goodies) ListRemoveValue(key string, value string) error {
 	list, err := g.internalGetList(key)
 	if err != nil {
 		switch err.(type) {
-		case NotFoundError:
+		case ErrNotFound:
 			return nil //No error if the list is just not found
 		default:
 			return err
@@ -236,7 +206,7 @@ func (g *Goodies) ListRemoveValue(key string, value string) error {
 }
 
 // ListGetByIndex Returns an item from a referenced list by index
-// Returns NotFoundError in case if list was not found, TypeMismatchError in case if referenced item is not a list
+// Returns ErrNotFound in case if list was not found, ErrTypeMismatch in case if referenced item is not a list
 func (g *Goodies) ListGetByIndex(key string, index int) (string, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
@@ -261,7 +231,7 @@ func (g *Goodies) DictSet(key string, dictKey string, value string) error {
 	dict, err := g.internalGetDict(key)
 	if err != nil {
 		switch err.(type) {
-		case NotFoundError:
+		case ErrNotFound:
 			dict := make(map[string]string, 1)
 			dict[dictKey] = value
 			g.storage[key] = g.newItem(dict, g.defaultExpiry)
@@ -288,7 +258,7 @@ func (g *Goodies) DictGet(key string, dictKey string) (string, error) {
 	}
 	val, ok := dict[dictKey]
 	if !ok {
-		return "", DictKeyNotFound{dictKey}
+		return "", ErrDictKeyNotFound{dictKey}
 	}
 	return val, nil
 }
@@ -329,7 +299,7 @@ func (g *Goodies) SetExpiry(key string, ttl time.Duration) error {
 	value, ok := g.internalGet(key)
 
 	if !ok {
-		return &TypeMismatchError{fmt.Sprintf("Item %v doesn't exist", key)}
+		return &ErrTypeMismatch{fmt.Sprintf("Item %v doesn't exist", key)}
 	}
 	g.storage[key] = g.newItem(value, ttl)
 	return nil
@@ -362,11 +332,11 @@ func (g *Goodies) runPersister(p *Persister) {
 func (g *Goodies) internalGetString(key string) (string, error) {
 	val, found := g.internalGet(key)
 	if !found {
-		return "", NotFoundError{key}
+		return "", ErrNotFound{key}
 	}
 	isString := checkValueIsString(key)
 	if !isString {
-		return "", TypeMismatchError{fmt.Sprintf("Requested item is not a string")}
+		return "", ErrTypeMismatch{fmt.Sprintf("Requested item is not a string")}
 	}
 	return val.(string), nil
 }
@@ -386,11 +356,11 @@ func (g *Goodies) internalGet(key string) (interface{}, bool) {
 func (g *Goodies) internalGetList(key string) ([]string, error) {
 	value, found := g.internalGet(key)
 	if !found {
-		return nil, NotFoundError{key}
+		return nil, ErrNotFound{key}
 	}
 	isList := checkValueIsList(value)
 	if !isList {
-		return nil, TypeMismatchError{fmt.Sprintf("Item %v is not a list", key)}
+		return nil, ErrTypeMismatch{fmt.Sprintf("Item %v is not a list", key)}
 	}
 	return value.([]string), nil
 }
@@ -398,11 +368,11 @@ func (g *Goodies) internalGetList(key string) ([]string, error) {
 func (g *Goodies) internalGetDict(key string) (map[string]string, error) {
 	value, found := g.internalGet(key)
 	if !found {
-		return nil, NotFoundError{key}
+		return nil, ErrNotFound{key}
 	}
 	isDict := checkValueIsDict(value)
 	if !isDict {
-		return nil, TypeMismatchError{fmt.Sprintf("Item %v is not a dictionary", key)}
+		return nil, ErrTypeMismatch{fmt.Sprintf("Item %v is not a dictionary", key)}
 	}
 	return value.(map[string]string), nil
 }
