@@ -1,6 +1,8 @@
 package goodies
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type JsonRequestResponseSerialiser struct{}
 
@@ -27,7 +29,11 @@ func (ser JsonRequestResponseSerialiser) deserialiseRequest(data []byte, req *Go
 }
 
 func (ser JsonRequestResponseSerialiser) serialiseResponse(res GoodiesResponse) ([]byte, error) {
-	forSerialisation := goodiesResponseSer{res.Success, res.Result, res.Err.Error()}
+	var errDesc string
+	if res.Err != nil {
+		errDesc = res.Err.Error()
+	}
+	forSerialisation := goodiesResponseSer{res.Success, res.Result, errDesc}
 	data, err := json.Marshal(forSerialisation)
 	if err != nil {
 		return nil, ErrTransformation{err.Error()}

@@ -155,5 +155,11 @@ func (c Client) SetExpiry(key string, ttl time.Duration) error {
 }
 
 func ttlAsString(ttl time.Duration) string {
-	return string(ttl.Nanoseconds())
+	if ttl == ExpireDefault {
+		return "-2"
+	}
+	if ttl == ExpireNever {
+		return "-1"
+	}
+	return string(int64(ttl.Seconds()))
 }

@@ -14,8 +14,8 @@ type HttpTransport struct {
 }
 
 type HttpServer struct {
-	cp         CommandProcesser
-	serializer RequestResponseSerialiser
+	CommandProcessor CommandProcesser
+	Serializer       RequestResponseSerialiser
 }
 
 func (tr HttpTransport) Process(req GoodiesRequest, res *GoodiesResponse) error {
@@ -44,14 +44,14 @@ func (tr HttpTransport) Process(req GoodiesRequest, res *GoodiesResponse) error 
 func (tr HttpServer) Serve(reqData []byte) []byte {
 	var req GoodiesRequest
 	var res GoodiesResponse
-	err := tr.serializer.deserialiseRequest(reqData, &req)
+	err := tr.Serializer.deserialiseRequest(reqData, &req)
 	if err != nil {
 		res = GoodiesResponse{false, "", err}
 	} else {
-		res = tr.cp.HandleCommand(req)
+		res = tr.CommandProcessor.HandleCommand(req)
 	}
 
-	data, err := tr.serializer.serialiseResponse(res)
+	data, err := tr.Serializer.serialiseResponse(res)
 	if err != nil {
 		panic("Cannot serialise response, don't know what to do :(")
 	}

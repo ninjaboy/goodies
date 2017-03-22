@@ -255,9 +255,15 @@ func setExpiryCommandHandler(command GoodiesRequest, storage Provider) GoodiesRe
 }
 
 func parseTTL(s string) (time.Duration, error) {
-	nanoseconds, err := strconv.ParseInt(s, 10, 64)
+	seconds, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
 		return 0, ErrCommandArgumentsMismatch{"Ttl parameter is of unexpected format. Should be integer (nanoseconds)"}
 	}
-	return time.Duration(nanoseconds) * time.Nanosecond, nil
+	if s == "-2" {
+		return ExpireDefault, nil
+	}
+	if s == "-1" {
+		return ExpireNever, nil
+	}
+	return time.Duration(seconds) * time.Second, nil
 }
