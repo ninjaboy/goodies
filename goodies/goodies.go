@@ -59,11 +59,12 @@ func newItemWithExpiry(value interface{}, expiry int64) gItem {
 }
 
 // Set Method
-func (g *Goodies) Set(key string, value string, ttl time.Duration) {
+func (g *Goodies) Set(key string, value string, ttl time.Duration) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	//TODO: disallow key to contain ',' for keys serialisation simplification
 	g.internalSet(key, value, ttl)
+	return nil
 }
 
 func (g *Goodies) internalSet(key string, value string, ttl time.Duration) {
@@ -92,10 +93,11 @@ func (g *Goodies) Update(key string, value string, ttl time.Duration) error {
 }
 
 // Remove key from storage (removes item of any type)
-func (g *Goodies) Remove(key string) {
+func (g *Goodies) Remove(key string) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	g.internalRemove(key)
+	return nil
 }
 
 func (g *Goodies) internalRemove(key string) {
@@ -103,7 +105,7 @@ func (g *Goodies) internalRemove(key string) {
 }
 
 // Keys returns list of keys
-func (g *Goodies) Keys() []string {
+func (g *Goodies) Keys() ([]string, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 	keys := make([]string, len(g.storage))
@@ -112,7 +114,7 @@ func (g *Goodies) Keys() []string {
 		keys[i] = k
 		i++
 	}
-	return keys
+	return keys, nil
 }
 
 // ListPush Adds a value into the end of list. Creates a list if it doesn't exist
