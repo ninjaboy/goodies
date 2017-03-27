@@ -5,17 +5,48 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 type HttpTransport struct {
 	address    string
 	serializer RequestResponseSerialiser
-	//credentials can be added
+	client     http.Client
 }
 
-type HttpServer struct {
-	CommandProcessor CommandProcesser
-	Serializer       RequestResponseSerialiser
+type GoodiesHttpServer struct {
+	commandProcessor CommandProcesser
+	serializer       RequestResponseSerialiser
+}
+
+func NewGoodiesClient(address string) Provider {
+	return Client{NewGoodiesHttpTransport(address)}
+}
+
+func NewGoodiesHttpTransport(address string) HttpTransport {
+	client := http.Client{}
+	ser := JsonRequestResponseSerialiser{}
+	return HttpTransport{address, ser, client}
+}
+
+func NewGoodiesHttpServer(port string, defTtl time.Duration, storage string, storageDump time.Duration) *http.Server {
+	g := NewGoodies(defTtl, storage, storageDump)
+	cp := NewGoodiesCommandsProcessor(g)
+	serialiser := JsonRequestResponseSerialiser{}
+	result := GoodiesHttpServer{cp, serialiser}
+
+	server := &http.Server{Addr: ":" + port, Handler: &result}
+
+	return server
+}
+
+func (s *GoodiesHttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic("Cannot read incoming request")
+	}
+	//fmt.Println(string(data))
+	w.Write(s.Serve(data))
 }
 
 func (tr HttpTransport) Process(req GoodiesRequest, res *GoodiesResponse) error {
@@ -27,8 +58,7 @@ func (tr HttpTransport) Process(req GoodiesRequest, res *GoodiesResponse) error 
 	httpRequest, err := http.NewRequest("POST", tr.address, bytes.NewReader(data))
 	httpRequest.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(httpRequest)
+	resp, err := tr.client.Do(httpRequest)
 	if err != nil {
 		return err
 	}
@@ -41,19 +71,19 @@ func (tr HttpTransport) Process(req GoodiesRequest, res *GoodiesResponse) error 
 	return tr.serializer.deserialiseResponse(body, res)
 }
 
-func (tr HttpServer) Serve(reqData []byte) []byte {
+func (tr GoodiesHttpServer) Serve(reqData []byte) []byte {
 	var req GoodiesRequest
 	var res GoodiesResponse
-	err := tr.Serializer.deserialiseRequest(reqData, &req)
+	err := tr.serializer.deserialiseRequest(reqData, &req)
 	if err != nil {
 		res = GoodiesResponse{false, "", err}
 	} else {
-		res = tr.CommandProcessor.HandleCommand(req)
+		res = tr.commandProcessor.HandleCommand(req)
 	}
 
-	data, err := tr.Serializer.serialiseResponse(res)
+	data, err := tr.serializer.serialiseResponse(res)
 	if err != nil {
-		panic("Cannot serialise response, don't know what to do :(")
+		panic("Cannot serialise response")
 	}
 	return data
 }

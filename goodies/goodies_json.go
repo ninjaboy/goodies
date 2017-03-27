@@ -42,13 +42,18 @@ func (ser JsonRequestResponseSerialiser) serialiseResponse(res GoodiesResponse) 
 }
 
 func (ser JsonRequestResponseSerialiser) deserialiseResponse(data []byte, res *GoodiesResponse) error {
+
 	forDeserialisation := goodiesResponseSer{}
-	err := json.Unmarshal(data, forDeserialisation)
+	err := json.Unmarshal(data, &forDeserialisation)
 	if err != nil {
 		return ErrTransformation{err.Error()}
 	}
 	res.Result = forDeserialisation.Result
 	res.Success = forDeserialisation.Success
+
+	if res.Success == true {
+		return nil
+	}
 	res.Err = ErrorFromString(forDeserialisation.ErrStr)
 	return nil
 }

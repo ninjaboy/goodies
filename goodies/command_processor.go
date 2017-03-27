@@ -123,7 +123,7 @@ func keysCommandHandler(command GoodiesRequest, storage Provider) GoodiesRespons
 	if len(command.Parameters) != 0 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"Keys command is expected to have 0 arguments"})
 	}
-	val := storage.Keys()
+	val, _ := storage.Keys()
 	return createOkResult(strings.Trim(strings.Join(strings.Fields(fmt.Sprint(val)), ":"), "[]"))
 }
 
@@ -146,7 +146,7 @@ func listLenCommandHandler(command GoodiesRequest, storage Provider) GoodiesResp
 	if err != nil {
 		return createErrorResult(err)
 	}
-	return createOkResult(string(val))
+	return createOkResult(strconv.Itoa(val))
 }
 
 func listRemoveIndexCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
@@ -255,15 +255,16 @@ func setExpiryCommandHandler(command GoodiesRequest, storage Provider) GoodiesRe
 }
 
 func parseTTL(s string) (time.Duration, error) {
-	seconds, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return 0, ErrCommandArgumentsMismatch{"Ttl parameter is of unexpected format. Should be integer (nanoseconds)"}
-	}
 	if s == "-2" {
 		return ExpireDefault, nil
 	}
 	if s == "-1" {
 		return ExpireNever, nil
 	}
+	seconds, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, ErrCommandArgumentsMismatch{"Ttl parameter is of unexpected format. Should be integer (nanoseconds)"}
+	}
+
 	return time.Duration(seconds) * time.Second, nil
 }

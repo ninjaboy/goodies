@@ -37,11 +37,11 @@ type CommandServer interface {
 
 // Provider generic client interface combining all available methods
 type Provider interface {
-	Set(key string, value string, ttl time.Duration)
+	Set(key string, value string, ttl time.Duration) error
 	Get(key string) (string, error)
 	Update(key string, value string, ttl time.Duration) error
-	Remove(key string)
-	Keys() []string
+	Remove(key string) error
+	Keys() ([]string, error)
 
 	ListPush(key string, value string) error
 	ListLen(key string) (int, error)

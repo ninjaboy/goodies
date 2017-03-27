@@ -85,5 +85,5 @@ func ErrorFromString(str string) error {
 }
 
 func getParameter(str string) string {
-	return str[strings.LastIndex(str, ": "):]
+	return str[strings.LastIndex(str, ": ")+2:]
 }

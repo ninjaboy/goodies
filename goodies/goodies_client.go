@@ -80,7 +80,7 @@ func (c Client) ListLen(key string) (int, error) {
 }
 
 func (c Client) ListRemoveIndex(key string, index int) error {
-	req := GoodiesRequest{"ListRemoveIndex", []string{key, string(index)}}
+	req := GoodiesRequest{"ListRemoveIndex", []string{key, strconv.Itoa(index)}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -98,7 +98,7 @@ func (c Client) ListRemoveValue(key string, value string) error {
 }
 
 func (c Client) ListGetByIndex(key string, index int) (string, error) {
-	req := GoodiesRequest{"ListGetByIndex", []string{key, string(index)}}
+	req := GoodiesRequest{"ListGetByIndex", []string{key, strconv.Itoa(index)}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return "", res.Err
@@ -161,5 +161,5 @@ func ttlAsString(ttl time.Duration) string {
 	if ttl == ExpireNever {
 		return "-1"
 	}
-	return string(int64(ttl.Seconds()))
+	return strconv.FormatInt(int64(ttl.Seconds()), 10)
 }
