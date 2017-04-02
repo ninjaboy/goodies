@@ -6,17 +6,21 @@ import (
 	"time"
 )
 
-func internalProcess(req GoodiesRequest, c Client) GoodiesResponse {
-	var res GoodiesResponse
+type goodiesClient struct {
+	transport CommandProcessor
+}
+
+func internalProcess(req CommandRequest, c goodiesClient) CommandResponse {
+	var res CommandResponse
 	err := c.transport.Process(req, &res)
 	if err != nil {
-		return GoodiesResponse{false, "", ErrInternalError{err.Error()}}
+		return CommandResponse{false, "", ErrInternalError{err.Error()}}
 	}
 	return res
 }
 
-func (c Client) Set(key string, value string, ttl time.Duration) error {
-	req := GoodiesRequest{"Set", []string{key, value, ttlAsString(ttl)}}
+func (c goodiesClient) Set(key string, value string, ttl time.Duration) error {
+	req := CommandRequest{"Set", []string{key, value, ttlAsString(ttl)}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -24,8 +28,8 @@ func (c Client) Set(key string, value string, ttl time.Duration) error {
 	return nil
 }
 
-func (c Client) Get(key string) (string, error) {
-	req := GoodiesRequest{"Get", []string{key}}
+func (c goodiesClient) Get(key string) (string, error) {
+	req := CommandRequest{"Get", []string{key}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return "", res.Err
@@ -33,8 +37,8 @@ func (c Client) Get(key string) (string, error) {
 	return res.Result, nil
 }
 
-func (c Client) Update(key string, value string, ttl time.Duration) error {
-	req := GoodiesRequest{"Update", []string{key, value, ttlAsString(ttl)}}
+func (c goodiesClient) Update(key string, value string, ttl time.Duration) error {
+	req := CommandRequest{"Update", []string{key, value, ttlAsString(ttl)}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -42,8 +46,8 @@ func (c Client) Update(key string, value string, ttl time.Duration) error {
 	return nil
 }
 
-func (c Client) Remove(key string) error {
-	req := GoodiesRequest{"Remove", []string{key}}
+func (c goodiesClient) Remove(key string) error {
+	req := CommandRequest{"Remove", []string{key}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -51,8 +55,8 @@ func (c Client) Remove(key string) error {
 	return nil
 }
 
-func (c Client) Keys() ([]string, error) {
-	req := GoodiesRequest{"Keys", []string{}}
+func (c goodiesClient) Keys() ([]string, error) {
+	req := CommandRequest{"Keys", []string{}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return nil, res.Err
@@ -60,8 +64,8 @@ func (c Client) Keys() ([]string, error) {
 	return strings.Split(res.Result, ":"), nil
 }
 
-func (c Client) ListPush(key string, value string) error {
-	req := GoodiesRequest{"ListPush", []string{key, value}}
+func (c goodiesClient) ListPush(key string, value string) error {
+	req := CommandRequest{"ListPush", []string{key, value}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -69,8 +73,8 @@ func (c Client) ListPush(key string, value string) error {
 	return nil
 }
 
-func (c Client) ListLen(key string) (int, error) {
-	req := GoodiesRequest{"ListLen", []string{key}}
+func (c goodiesClient) ListLen(key string) (int, error) {
+	req := CommandRequest{"ListLen", []string{key}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return 0, res.Err
@@ -79,8 +83,8 @@ func (c Client) ListLen(key string) (int, error) {
 	return len, nil
 }
 
-func (c Client) ListRemoveIndex(key string, index int) error {
-	req := GoodiesRequest{"ListRemoveIndex", []string{key, strconv.Itoa(index)}}
+func (c goodiesClient) ListRemoveIndex(key string, index int) error {
+	req := CommandRequest{"ListRemoveIndex", []string{key, strconv.Itoa(index)}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -88,8 +92,8 @@ func (c Client) ListRemoveIndex(key string, index int) error {
 	return nil
 }
 
-func (c Client) ListRemoveValue(key string, value string) error {
-	req := GoodiesRequest{"ListRemoveIndex", []string{key, value}}
+func (c goodiesClient) ListRemoveValue(key string, value string) error {
+	req := CommandRequest{"ListRemoveIndex", []string{key, value}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -97,8 +101,8 @@ func (c Client) ListRemoveValue(key string, value string) error {
 	return nil
 }
 
-func (c Client) ListGetByIndex(key string, index int) (string, error) {
-	req := GoodiesRequest{"ListGetByIndex", []string{key, strconv.Itoa(index)}}
+func (c goodiesClient) ListGetByIndex(key string, index int) (string, error) {
+	req := CommandRequest{"ListGetByIndex", []string{key, strconv.Itoa(index)}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return "", res.Err
@@ -106,8 +110,8 @@ func (c Client) ListGetByIndex(key string, index int) (string, error) {
 	return res.Result, nil
 }
 
-func (c Client) DictSet(key string, dictKey string, value string) error {
-	req := GoodiesRequest{"DictSet", []string{key, dictKey, value}}
+func (c goodiesClient) DictSet(key string, dictKey string, value string) error {
+	req := CommandRequest{"DictSet", []string{key, dictKey, value}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -115,8 +119,8 @@ func (c Client) DictSet(key string, dictKey string, value string) error {
 	return nil
 }
 
-func (c Client) DictGet(key string, dictKey string) (string, error) {
-	req := GoodiesRequest{"DictGet", []string{key, dictKey}}
+func (c goodiesClient) DictGet(key string, dictKey string) (string, error) {
+	req := CommandRequest{"DictGet", []string{key, dictKey}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return "", res.Err
@@ -124,8 +128,8 @@ func (c Client) DictGet(key string, dictKey string) (string, error) {
 	return res.Result, nil
 }
 
-func (c Client) DictRemove(key string, dictKey string) error {
-	req := GoodiesRequest{"DictRemove", []string{key, dictKey}}
+func (c goodiesClient) DictRemove(key string, dictKey string) error {
+	req := CommandRequest{"DictRemove", []string{key, dictKey}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err
@@ -133,8 +137,8 @@ func (c Client) DictRemove(key string, dictKey string) error {
 	return nil
 }
 
-func (c Client) DictHasKey(key string, dictKey string) (bool, error) {
-	req := GoodiesRequest{"DictHasKey", []string{key, dictKey}}
+func (c goodiesClient) DictHasKey(key string, dictKey string) (bool, error) {
+	req := CommandRequest{"DictHasKey", []string{key, dictKey}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return false, res.Err
@@ -145,8 +149,8 @@ func (c Client) DictHasKey(key string, dictKey string) (bool, error) {
 	return false, nil
 }
 
-func (c Client) SetExpiry(key string, ttl time.Duration) error {
-	req := GoodiesRequest{"SetExpiry", []string{key, ttlAsString(ttl)}}
+func (c goodiesClient) SetExpiry(key string, ttl time.Duration) error {
+	req := CommandRequest{"SetExpiry", []string{key, ttlAsString(ttl)}}
 	res := internalProcess(req, c)
 	if !res.Success {
 		return res.Err

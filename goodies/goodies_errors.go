@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// ErrUnknownCommand Indicates unsupported command requested
 type ErrUnknownCommand struct {
 	name string
 }
@@ -13,6 +14,7 @@ func (e ErrUnknownCommand) Error() string {
 	return fmt.Sprintf("ErrUnknownCommand: Unknown command requested: %v", e.name)
 }
 
+// ErrInternalError Indicates software error
 type ErrInternalError struct {
 	str string
 }
@@ -21,6 +23,7 @@ func (e ErrInternalError) Error() string {
 	return fmt.Sprintf("ErrInternalError: %v", e.str)
 }
 
+// ErrCommandArgumentsMismatch Indicates arguments count mismatch
 type ErrCommandArgumentsMismatch struct {
 	str string
 }
@@ -28,6 +31,7 @@ type ErrCommandArgumentsMismatch struct {
 func (e ErrCommandArgumentsMismatch) Error() string {
 	return fmt.Sprintf("ErrCommandArgumentsMismatch: %v", e.str)
 }
+
 
 type ErrTypeMismatch struct {
 	err string

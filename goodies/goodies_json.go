@@ -4,7 +4,14 @@ import (
 	"encoding/json"
 )
 
-type JsonRequestResponseSerialiser struct{}
+type RequestResponseSerialiser interface {
+	SerialiseRequest(CommandRequest) ([]byte, error)
+	DeserialiseRequest([]byte, *CommandRequest) error
+	SerialiseResponse(CommandResponse) ([]byte, error)
+	DeserialiseResponse([]byte, *CommandResponse) error
+}
+
+type jsonRequestResponseSerialiser struct{}
 
 type goodiesResponseSer struct {
 	Success bool
@@ -12,7 +19,7 @@ type goodiesResponseSer struct {
 	ErrStr  string
 }
 
-func (ser JsonRequestResponseSerialiser) serialiseRequest(req GoodiesRequest) ([]byte, error) {
+func (ser jsonRequestResponseSerialiser) SerialiseRequest(req CommandRequest) ([]byte, error) {
 	data, err := json.Marshal(req)
 	if err != nil {
 		return nil, ErrTransformation{err.Error()}
@@ -20,7 +27,7 @@ func (ser JsonRequestResponseSerialiser) serialiseRequest(req GoodiesRequest) ([
 	return data, nil
 }
 
-func (ser JsonRequestResponseSerialiser) deserialiseRequest(data []byte, req *GoodiesRequest) error {
+func (ser jsonRequestResponseSerialiser) DeserialiseRequest(data []byte, req *CommandRequest) error {
 	err := json.Unmarshal(data, req)
 	if err != nil {
 		return ErrTransformation{err.Error()}
@@ -28,7 +35,7 @@ func (ser JsonRequestResponseSerialiser) deserialiseRequest(data []byte, req *Go
 	return nil
 }
 
-func (ser JsonRequestResponseSerialiser) serialiseResponse(res GoodiesResponse) ([]byte, error) {
+func (ser jsonRequestResponseSerialiser) SerialiseResponse(res CommandResponse) ([]byte, error) {
 	var errDesc string
 	if res.Err != nil {
 		errDesc = res.Err.Error()
@@ -41,7 +48,7 @@ func (ser JsonRequestResponseSerialiser) serialiseResponse(res GoodiesResponse) 
 	return data, nil
 }
 
-func (ser JsonRequestResponseSerialiser) deserialiseResponse(data []byte, res *GoodiesResponse) error {
+func (ser jsonRequestResponseSerialiser) DeserialiseResponse(data []byte, res *CommandResponse) error {
 
 	forDeserialisation := goodiesResponseSer{}
 	err := json.Unmarshal(data, &forDeserialisation)

@@ -11,14 +11,14 @@ import (
 type TextOverHttpClient struct {
 	isConnected bool
 	connString  string
-	transport   goodies.HttpTransport
+	transport   goodies.GoodiesHttpCommandClient
 }
 
 func (t *TextOverHttpClient) Connect(address string) error {
 	t.connString = address //TODO: add url validation
 	t.isConnected = true
 
-	t.transport = goodies.NewGoodiesHttpTransport(address)
+	t.transport = goodies.NewGoodiesHttpCommandClient(address)
 	return nil
 }
 
@@ -57,14 +57,14 @@ func processInput(command string, client *TextOverHttpClient) bool {
 		return false
 	}
 
-	com := &goodies.GoodiesRequest{}
+	com := &goodies.CommandRequest{}
 	err := tryBuildCommand(command, com)
 	fmt.Println(com.Name, com.Parameters)
 	if err != nil {
 		fmt.Printf("Command formatted incorrectly: %v\n", err)
 	}
 
-	res := &goodies.GoodiesResponse{}
+	res := &goodies.CommandResponse{}
 	err = client.transport.Process(*com, res)
 	if err != nil {
 		fmt.Println("Transport error occurred:", err)
@@ -78,7 +78,7 @@ func processInput(command string, client *TextOverHttpClient) bool {
 	return false
 }
 
-func tryBuildCommand(command string, req *goodies.GoodiesRequest) error {
+func tryBuildCommand(command string, req *goodies.CommandRequest) error {
 	fields, err := GetFieldsConsideringQuotes(command)
 	if err != nil {
 		return err

@@ -1,25 +1,68 @@
 package goodies
 
-import "encoding/gob"
-
-import "time"
-import "os"
+import (
+	"encoding/gob"
+	"fmt"
+	"os"
+	"time"
+)
 
 // Persister type performing reccurent persists
 type Persister struct {
-	stop     chan<- bool
+	*GoodiesStorage
+	stop     chan bool
 	filename string
 	interval time.Duration
 }
 
-// NewPersister Creates file based persister
-func NewPersister(filename string, interval time.Duration) *Persister {
-	persister := &Persister{
-		stop:     make(chan bool),
-		filename: filename,
-		interval: interval,
+type StoppableProvider interface {
+	Provider
+	Stop()
+}
+
+//NewGoodiesPersistedStorage Creates an instance of persisted goodies storage
+func NewGoodiesPersistedStorage(ttl time.Duration, filename string, persistenceInterval time.Duration) StoppableProvider {
+	storage := NewGoodiesStorage(ttl)
+
+	persisted := Persister{
+		GoodiesStorage: storage,
+		stop:           make(chan bool),
+		filename:       filename,
+		interval:       persistenceInterval,
 	}
-	return persister
+	if filename == "" {
+		panic("Filename cannot be empty")
+	}
+
+	initialStorage := make(map[string]goodiesItem)
+	_ = persisted.Load(&initialStorage)
+	persisted.storage = initialStorage
+	go persisted.runPersister()
+	return persisted
+}
+
+//Stop method is a nice way to clearly stop the cache
+func (p Persister) Stop() {
+	p.stop <- true
+}
+
+func (p *Persister) runPersister() {
+	persistTrigger := time.NewTicker(p.interval)
+	for {
+		select {
+		case <-persistTrigger.C:
+			p.cleanupOutdated()
+			if err := p.Save(p.getBlob()); err != nil {
+				fmt.Printf("Backup not saved %v\n", err)
+			}
+		case <-p.stop:
+			p.cleanupOutdated()
+			if err := p.Save(p.getBlob()); err != nil {
+				fmt.Printf("Backup not saved %v\n", err)
+			}
+			return
+		}
+	}
 }
 
 // Load Load blob from file storage

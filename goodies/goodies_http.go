@@ -8,49 +8,48 @@ import (
 	"time"
 )
 
-type HttpTransport struct {
+type GoodiesHttpCommandClient struct {
 	address    string
 	serializer RequestResponseSerialiser
 	client     http.Client
 }
 
-type GoodiesHttpServer struct {
+func NewGoodiesClient(address string) Provider {
+	return goodiesClient{NewGoodiesHttpCommandClient(address)}
+}
+
+func NewGoodiesHttpCommandClient(address string) GoodiesHttpCommandClient {
+	client := http.Client{}
+	ser := jsonRequestResponseSerialiser{}
+	return GoodiesHttpCommandClient{address, ser, client}
+}
+
+func NewGoodiesHttpServer(port string, defTtl time.Duration, storage string, persistInterval time.Duration) *http.Server {
+	g := NewGoodiesPersistedStorage(defTtl, storage, persistInterval)
+	commandProcessor := NewGoodiesCommandsProcessor(g)
+	serialiser := jsonRequestResponseSerialiser{}
+	handler := goodiesHTTPServer{commandProcessor, serialiser}
+	server := &http.Server{
+		Addr:    ":" + port,
+		Handler: &handler}
+	return server
+}
+
+type goodiesHTTPServer struct {
 	commandProcessor CommandProcesser
 	serializer       RequestResponseSerialiser
 }
 
-func NewGoodiesClient(address string) Provider {
-	return Client{NewGoodiesHttpTransport(address)}
-}
-
-func NewGoodiesHttpTransport(address string) HttpTransport {
-	client := http.Client{}
-	ser := JsonRequestResponseSerialiser{}
-	return HttpTransport{address, ser, client}
-}
-
-func NewGoodiesHttpServer(port string, defTtl time.Duration, storage string, storageDump time.Duration) *http.Server {
-	g := NewGoodies(defTtl, storage, storageDump)
-	cp := NewGoodiesCommandsProcessor(g)
-	serialiser := JsonRequestResponseSerialiser{}
-	result := GoodiesHttpServer{cp, serialiser}
-
-	server := &http.Server{Addr: ":" + port, Handler: &result}
-
-	return server
-}
-
-func (s *GoodiesHttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *goodiesHTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		panic("Cannot read incoming request")
 	}
-	//fmt.Println(string(data))
-	w.Write(s.Serve(data))
+	w.Write(s.serveCommandBytes(data))
 }
 
-func (tr HttpTransport) Process(req GoodiesRequest, res *GoodiesResponse) error {
-	data, err := tr.serializer.serialiseRequest(req)
+func (tr GoodiesHttpCommandClient) Process(req CommandRequest, res *CommandResponse) error {
+	data, err := tr.serializer.SerialiseRequest(req)
 	if err != nil {
 		return err
 	}
@@ -68,20 +67,20 @@ func (tr HttpTransport) Process(req GoodiesRequest, res *GoodiesResponse) error 
 		return ErrInternalError{fmt.Sprintf("Conectivity issue: %v", resp.Status)}
 	}
 	body, _ := ioutil.ReadAll(resp.Body)
-	return tr.serializer.deserialiseResponse(body, res)
+	return tr.serializer.DeserialiseResponse(body, res)
 }
 
-func (tr GoodiesHttpServer) Serve(reqData []byte) []byte {
-	var req GoodiesRequest
-	var res GoodiesResponse
-	err := tr.serializer.deserialiseRequest(reqData, &req)
+func (s goodiesHTTPServer) serveCommandBytes(reqData []byte) []byte {
+	var req CommandRequest
+	var res CommandResponse
+	err := s.serializer.DeserialiseRequest(reqData, &req)
 	if err != nil {
-		res = GoodiesResponse{false, "", err}
+		res = CommandResponse{false, "", err}
 	} else {
-		res = tr.commandProcessor.HandleCommand(req)
+		res = s.commandProcessor.HandleCommand(req)
 	}
 
-	data, err := tr.serializer.serialiseResponse(res)
+	data, err := s.serializer.SerialiseResponse(res)
 	if err != nil {
 		panic("Cannot serialise response")
 	}

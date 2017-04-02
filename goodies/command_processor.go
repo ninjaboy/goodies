@@ -7,33 +7,48 @@ import (
 	"time"
 )
 
-type GoodiesRequest struct {
+// CommandRequest Command like class to produce requests to GoodiesCommandProcessor
+// Name would be the same as the method name exposed by goodies.Provider interface
+// Parameters would be the method parameters respectively
+// (ttl would be sent in seconds as string or as ExpireDefault/ExpireNever)
+type CommandRequest struct {
 	Name       string
 	Parameters []string
 }
 
-type GoodiesResponse struct {
+// CommandResponse Command like class that is returned as a result of command execution
+// Success will be set to true in case if no error happened when processing the command
+// Result will contain command result value (lists will be serialised as comma separated)
+// Err will contain typed error from the list of errors exposed by goodies package (see Err* types)
+type CommandResponse struct {
 	Success bool
 	Result  string
 	Err     error
 }
 
-type GoodiesCommandProcessor struct {
-	storage         Provider
-	commandHandlers map[string]func(command GoodiesRequest, storage Provider) GoodiesResponse
+// CommandProcesser Interface that defines any class that can handle GoodiesRequest and return GoodiesResponse
+type CommandProcesser interface {
+	HandleCommand(req CommandRequest) CommandResponse
 }
 
-func (gcp *GoodiesCommandProcessor) addCommandHandler(
+// goodiesCommandProcessor Generic command processor class
+// helping to wrap command processing to the storage and back
+// mediates commands to provider
+type goodiesCommandProcessor struct {
+	storage         Provider
+	commandHandlers map[string]func(command CommandRequest, storage Provider) CommandResponse
+}
+
+func (gcp *goodiesCommandProcessor) addCommandHandler(
 	name string,
-	handler func(command GoodiesRequest, storage Provider) GoodiesResponse) {
+	handler func(command CommandRequest, storage Provider) CommandResponse) {
 
 	gcp.commandHandlers[name] = handler
 }
 
-func (gcp *GoodiesCommandProcessor) HandleCommand(req GoodiesRequest) GoodiesResponse {
+func (gcp *goodiesCommandProcessor) HandleCommand(req CommandRequest) CommandResponse {
 	defer func() {
 		if r := recover(); r != nil {
-
 		}
 	}()
 	handler, ok := gcp.commandHandlers[req.Name]
@@ -43,18 +58,18 @@ func (gcp *GoodiesCommandProcessor) HandleCommand(req GoodiesRequest) GoodiesRes
 	return handler(req, gcp.storage)
 }
 
-func createErrorResult(err error) GoodiesResponse {
+func createErrorResult(err error) CommandResponse {
 	//TODO: add runtime check for known errors
-	return GoodiesResponse{false, "", err}
+	return CommandResponse{false, "", err}
 }
 
-func createOkResult(res string) GoodiesResponse {
-	return GoodiesResponse{true, res, nil}
+func createOkResult(res string) CommandResponse {
+	return CommandResponse{true, res, nil}
 }
 
 // NewGoodiesCommandsProcessor Creates a generic command processor for goodies provider
-func NewGoodiesCommandsProcessor(storage Provider) *GoodiesCommandProcessor {
-	gcp := GoodiesCommandProcessor{storage, make(map[string]func(command GoodiesRequest, storage Provider) GoodiesResponse, 1)}
+func NewGoodiesCommandsProcessor(storage Provider) CommandProcesser {
+	gcp := goodiesCommandProcessor{storage, make(map[string]func(command CommandRequest, storage Provider) CommandResponse, 1)}
 	gcp.addCommandHandler("Set", setCommandHandler)
 	gcp.addCommandHandler("Get", getCommandHandler)
 	gcp.addCommandHandler("Update", updateCommandHandler)
@@ -73,7 +88,7 @@ func NewGoodiesCommandsProcessor(storage Provider) *GoodiesCommandProcessor {
 	return &gcp
 }
 
-func setCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func setCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 3 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"Set command is expected to have 3 arguments (key, value, ttl)"})
 	}
@@ -85,7 +100,7 @@ func setCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse
 	return createOkResult("")
 }
 
-func getCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func getCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 1 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"Get command is expected to have 1 argument (key)"})
 	}
@@ -96,7 +111,7 @@ func getCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse
 	return createOkResult(val)
 }
 
-func updateCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func updateCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 3 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"Update command is expected to have 3 arguments (key, value, ttl)"})
 	}
@@ -111,7 +126,7 @@ func updateCommandHandler(command GoodiesRequest, storage Provider) GoodiesRespo
 	return createOkResult("")
 }
 
-func removeCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func removeCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 1 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"Remove command is expected to have 1 argument (key)"})
 	}
@@ -119,7 +134,7 @@ func removeCommandHandler(command GoodiesRequest, storage Provider) GoodiesRespo
 	return createOkResult("")
 }
 
-func keysCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func keysCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 0 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"Keys command is expected to have 0 arguments"})
 	}
@@ -127,7 +142,7 @@ func keysCommandHandler(command GoodiesRequest, storage Provider) GoodiesRespons
 	return createOkResult(strings.Trim(strings.Join(strings.Fields(fmt.Sprint(val)), ":"), "[]"))
 }
 
-func listPushCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func listPushCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"ListPush command is expected to have 2 arguments (key, value)"})
 	}
@@ -138,7 +153,7 @@ func listPushCommandHandler(command GoodiesRequest, storage Provider) GoodiesRes
 	return createOkResult("")
 }
 
-func listLenCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func listLenCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 1 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"ListLen command is expected to have 1 argument (key)"})
 	}
@@ -149,7 +164,7 @@ func listLenCommandHandler(command GoodiesRequest, storage Provider) GoodiesResp
 	return createOkResult(strconv.Itoa(val))
 }
 
-func listRemoveIndexCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func listRemoveIndexCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"ListRemoveIndex command is expected to have 2 arguments (key, index(INT))"})
 	}
@@ -165,7 +180,7 @@ func listRemoveIndexCommandHandler(command GoodiesRequest, storage Provider) Goo
 	return createOkResult("")
 }
 
-func listRemoveValueCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func listRemoveValueCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"ListRemoveValue command is expected to have 2 arguments (key, index(INT))"})
 	}
@@ -176,7 +191,7 @@ func listRemoveValueCommandHandler(command GoodiesRequest, storage Provider) Goo
 	return createOkResult("")
 }
 
-func listGetByIndexCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func listGetByIndexCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"ListGetByIndex command is expected to have 2 arguments (key, index(INT))"})
 	}
@@ -192,7 +207,7 @@ func listGetByIndexCommandHandler(command GoodiesRequest, storage Provider) Good
 	return createOkResult(val)
 }
 
-func dictSetCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func dictSetCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 3 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"DictSet command is expected to have 3 arguments (key, dictKey, value)"})
 	}
@@ -203,7 +218,7 @@ func dictSetCommandHandler(command GoodiesRequest, storage Provider) GoodiesResp
 	return createOkResult("")
 }
 
-func dictGetCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func dictGetCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"DictGet command is expected to have 2 arguments (key, dictKey)"})
 	}
@@ -214,7 +229,7 @@ func dictGetCommandHandler(command GoodiesRequest, storage Provider) GoodiesResp
 	return createOkResult(val)
 }
 
-func dictRemoveCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func dictRemoveCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"DictRemove command is expected to have 2 arguments (key, dictKey)"})
 	}
@@ -225,7 +240,7 @@ func dictRemoveCommandHandler(command GoodiesRequest, storage Provider) GoodiesR
 	return createOkResult("")
 }
 
-func dictHasKeyCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func dictHasKeyCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"DictHasKey command is expected to have 2 arguments (key, dictKey)"})
 	}
@@ -239,7 +254,7 @@ func dictHasKeyCommandHandler(command GoodiesRequest, storage Provider) GoodiesR
 	return createOkResult("0")
 }
 
-func setExpiryCommandHandler(command GoodiesRequest, storage Provider) GoodiesResponse {
+func setExpiryCommandHandler(command CommandRequest, storage Provider) CommandResponse {
 	if len(command.Parameters) != 2 {
 		return createErrorResult(ErrCommandArgumentsMismatch{"SetExpiry command is expected to have 2 argument (key, ttl(INT SECONDS))"})
 	}

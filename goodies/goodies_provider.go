@@ -11,31 +11,13 @@ const (
 	ExpireDefault time.Duration = -2
 )
 
-type RequestResponseSerialiser interface {
-	serialiseRequest(GoodiesRequest) ([]byte, error)
-	deserialiseRequest([]byte, *GoodiesRequest) error
-	serialiseResponse(GoodiesResponse) ([]byte, error)
-	deserialiseResponse([]byte, *GoodiesResponse) error
-}
-
-// CommandTransporter generic interface implementing transport prototocol for a client
-type CommandTransporter interface {
-	Process(GoodiesRequest, *GoodiesResponse) error
-}
-
-type Client struct {
-	transport CommandTransporter
-}
-
-type CommandProcesser interface {
-	HandleCommand(req GoodiesRequest) GoodiesResponse
-}
-
-type CommandServer interface {
-	Serve(reqData []byte) []byte
+// CommandProcessor generic interface implementing transport prototocol for a client
+type CommandProcessor interface {
+	Process(CommandRequest, *CommandResponse) error
 }
 
 // Provider generic client interface combining all available methods
+// ttl can be passed as usual time.Duration or as predefined constants(ExpireNever/ExpireDefault)
 type Provider interface {
 	Set(key string, value string, ttl time.Duration) error
 	Get(key string) (string, error)

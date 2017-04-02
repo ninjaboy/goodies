@@ -7,59 +7,45 @@ import (
 
 import "time"
 
-// Goodies bag
-type Goodies struct {
-	storage       map[string]gItem
+// GoodiesStorage bag
+type GoodiesStorage struct {
+	storage       map[string]goodiesItem
 	lock          sync.RWMutex
 	defaultExpiry time.Duration
-	persister     *Persister
-	stop          chan bool
 }
 
-// gItem is internal Goodies item
-type gItem struct {
+// goodiesItem is internal Goodies item
+type goodiesItem struct {
 	Value  interface{}
 	Expiry int64
 }
 
-// NewGoodies creates new instance of goodiebag
-func NewGoodies(ttl time.Duration, filename string, persistInterval time.Duration) *Goodies {
-	var persister *Persister
-	initialStorage := make(map[string]gItem)
-	if filename != "" {
-		persister = NewPersister(filename, persistInterval)
-		_ = persister.Load(&initialStorage) //we don't really care about whether there was some data or not
-	}
-
-	goodies := &Goodies{
+// NewGoodiesStorage creates new instance of goodiebag
+func NewGoodiesStorage(ttl time.Duration) *GoodiesStorage {
+	initialStorage := make(map[string]goodiesItem)
+	goodies := &GoodiesStorage{
 		storage:       initialStorage,
 		defaultExpiry: ttl,
-		stop:          make(chan bool),
 	}
-
-	if filename != "" {
-		go goodies.runPersister(persister)
-	}
-
 	return goodies
 }
 
-func (g Goodies) newItem(value interface{}, ttl time.Duration) gItem {
-	return gItem{
+func (g *GoodiesStorage) newItem(value interface{}, ttl time.Duration) goodiesItem {
+	return goodiesItem{
 		Value:  value,
 		Expiry: getExpiry(ttl, g.defaultExpiry),
 	}
 }
 
-func newItemWithExpiry(value interface{}, expiry int64) gItem {
-	return gItem{
+func newItemWithExpiry(value interface{}, expiry int64) goodiesItem {
+	return goodiesItem{
 		Value:  value,
 		Expiry: expiry,
 	}
 }
 
 // Set Method
-func (g *Goodies) Set(key string, value string, ttl time.Duration) error {
+func (g *GoodiesStorage) Set(key string, value string, ttl time.Duration) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	//TODO: disallow key to contain ',' for keys serialisation simplification
@@ -67,12 +53,12 @@ func (g *Goodies) Set(key string, value string, ttl time.Duration) error {
 	return nil
 }
 
-func (g *Goodies) internalSet(key string, value string, ttl time.Duration) {
+func (g *GoodiesStorage) internalSet(key string, value string, ttl time.Duration) {
 	g.storage[key] = g.newItem(value, ttl)
 }
 
 // Get Method
-func (g *Goodies) Get(key string) (string, error) {
+func (g *GoodiesStorage) Get(key string) (string, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 	return g.internalGetString(key)
@@ -81,7 +67,7 @@ func (g *Goodies) Get(key string) (string, error) {
 // Update method
 // Returns ErrNotFound if an item doesn't exist
 // Returns ErrTypeMismatch if an item is not of a string type
-func (g *Goodies) Update(key string, value string, ttl time.Duration) error {
+func (g *GoodiesStorage) Update(key string, value string, ttl time.Duration) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	_, err := g.internalGetString(key)
@@ -93,19 +79,19 @@ func (g *Goodies) Update(key string, value string, ttl time.Duration) error {
 }
 
 // Remove key from storage (removes item of any type)
-func (g *Goodies) Remove(key string) error {
+func (g *GoodiesStorage) Remove(key string) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	g.internalRemove(key)
 	return nil
 }
 
-func (g *Goodies) internalRemove(key string) {
+func (g *GoodiesStorage) internalRemove(key string) {
 	delete(g.storage, key)
 }
 
 // Keys returns list of keys
-func (g *Goodies) Keys() ([]string, error) {
+func (g *GoodiesStorage) Keys() ([]string, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 	keys := make([]string, len(g.storage))
@@ -119,7 +105,7 @@ func (g *Goodies) Keys() ([]string, error) {
 
 // ListPush Adds a value into the end of list. Creates a list if it doesn't exist
 // An error will be returned in case
-func (g *Goodies) ListPush(key string, value string) error {
+func (g *GoodiesStorage) ListPush(key string, value string) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -141,7 +127,7 @@ func (g *Goodies) ListPush(key string, value string) error {
 
 // ListLen Returns the length of list. Returns 0 if list not found
 // Returns error if value stored is not a list
-func (g *Goodies) ListLen(key string) (int, error) {
+func (g *GoodiesStorage) ListLen(key string) (int, error) {
 	list, err := g.internalGetList(key)
 	if err != nil {
 		switch err.(type) {
@@ -158,7 +144,7 @@ func (g *Goodies) ListLen(key string) (int, error) {
 // ListRemoveIndex Removes list entry
 // Returns no error if item was removed or not found
 // Returns error if key is not pointing to a list
-func (g *Goodies) ListRemoveIndex(key string, index int) error {
+func (g *GoodiesStorage) ListRemoveIndex(key string, index int) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	list, err := g.internalGetList(key)
@@ -181,7 +167,7 @@ func (g *Goodies) ListRemoveIndex(key string, index int) error {
 
 //ListRemoveValue Removes all value occurences from the list
 //Return error only if the referenced item is not a list
-func (g *Goodies) ListRemoveValue(key string, value string) error {
+func (g *GoodiesStorage) ListRemoveValue(key string, value string) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -209,7 +195,7 @@ func (g *Goodies) ListRemoveValue(key string, value string) error {
 
 // ListGetByIndex Returns an item from a referenced list by index
 // Returns ErrNotFound in case if list was not found, ErrTypeMismatch in case if referenced item is not a list
-func (g *Goodies) ListGetByIndex(key string, index int) (string, error) {
+func (g *GoodiesStorage) ListGetByIndex(key string, index int) (string, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 
@@ -226,7 +212,7 @@ func (g *Goodies) ListGetByIndex(key string, index int) (string, error) {
 
 // DictSet Sets a value for a specific dictionary key in storage
 // Returns an error if referenced item is not a dictionary
-func (g *Goodies) DictSet(key string, dictKey string, value string) error {
+func (g *GoodiesStorage) DictSet(key string, dictKey string, value string) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -250,7 +236,7 @@ func (g *Goodies) DictSet(key string, dictKey string, value string) error {
 
 // DictGet returns a value for a dictionary by a key
 // Returns an error if referenced item is not a dictionary
-func (g *Goodies) DictGet(key string, dictKey string) (string, error) {
+func (g *GoodiesStorage) DictGet(key string, dictKey string) (string, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 
@@ -267,7 +253,7 @@ func (g *Goodies) DictGet(key string, dictKey string) (string, error) {
 
 // DictRemove Remove a specific key from a dictionary
 // Returns an error if referenced item is not a dictionary
-func (g *Goodies) DictRemove(key string, dictKey string) error {
+func (g *GoodiesStorage) DictRemove(key string, dictKey string) error {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 
@@ -280,7 +266,7 @@ func (g *Goodies) DictRemove(key string, dictKey string) error {
 }
 
 // DictHasKey Can be used to retreive key existence in a dictionary
-func (g *Goodies) DictHasKey(key string, dictKey string) (bool, error) {
+func (g *GoodiesStorage) DictHasKey(key string, dictKey string) (bool, error) {
 	g.lock.RLock()
 	defer g.lock.RUnlock()
 
@@ -294,7 +280,7 @@ func (g *Goodies) DictHasKey(key string, dictKey string) (bool, error) {
 
 // SetExpiry Updates item expiry to the specified ttl value
 // Returns error in case if item was not found
-func (g *Goodies) SetExpiry(key string, ttl time.Duration) error {
+func (g *GoodiesStorage) SetExpiry(key string, ttl time.Duration) error {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 
@@ -307,31 +293,7 @@ func (g *Goodies) SetExpiry(key string, ttl time.Duration) error {
 	return nil
 }
 
-//Stop method is a nice way to clearly stop the cache
-func (g *Goodies) Stop() {
-	g.stop <- true
-}
-
-func (g *Goodies) runPersister(p *Persister) {
-	persistTrigger := time.NewTicker(p.interval)
-	for {
-		select {
-		case <-persistTrigger.C:
-			g.cleanupOutdated()
-			if err := p.Save(g.getBlob()); err != nil {
-				fmt.Printf("Backup not saved %v\n", err)
-			}
-		case <-g.stop:
-			g.cleanupOutdated()
-			if err := p.Save(g.getBlob()); err != nil {
-				fmt.Printf("Backup not saved %v\n", err)
-			}
-			return
-		}
-	}
-}
-
-func (g *Goodies) internalGetString(key string) (string, error) {
+func (g *GoodiesStorage) internalGetString(key string) (string, error) {
 	val, found := g.internalGet(key)
 	if !found {
 		return "", ErrNotFound{key}
@@ -343,7 +305,7 @@ func (g *Goodies) internalGetString(key string) (string, error) {
 	return val.(string), nil
 }
 
-func (g *Goodies) internalGet(key string) (interface{}, bool) {
+func (g *GoodiesStorage) internalGet(key string) (interface{}, bool) {
 	val, found := g.storage[key]
 	if !found {
 		return nil, false
@@ -355,7 +317,7 @@ func (g *Goodies) internalGet(key string) (interface{}, bool) {
 	return val.Value, found
 }
 
-func (g *Goodies) internalGetList(key string) ([]string, error) {
+func (g *GoodiesStorage) internalGetList(key string) ([]string, error) {
 	value, found := g.internalGet(key)
 	if !found {
 		return nil, ErrNotFound{key}
@@ -367,7 +329,7 @@ func (g *Goodies) internalGetList(key string) ([]string, error) {
 	return value.([]string), nil
 }
 
-func (g *Goodies) internalGetDict(key string) (map[string]string, error) {
+func (g *GoodiesStorage) internalGetDict(key string) (map[string]string, error) {
 	value, found := g.internalGet(key)
 	if !found {
 		return nil, ErrNotFound{key}
@@ -380,7 +342,7 @@ func (g *Goodies) internalGetDict(key string) (map[string]string, error) {
 }
 
 // TODO: make cleanup strategy to run every 2 x defaultExpiration or each 10k items
-func (g *Goodies) cleanupOutdated() {
+func (g *GoodiesStorage) cleanupOutdated() {
 	g.lock.Lock()
 	defer g.lock.Unlock()
 	for key, value := range g.storage {
@@ -390,10 +352,10 @@ func (g *Goodies) cleanupOutdated() {
 	}
 }
 
-func (g *Goodies) getBlob() map[string]gItem {
+func (g *GoodiesStorage) getBlob() *map[string]goodiesItem {
 	g.lock.Lock()
 	defer g.lock.Unlock()
-	return g.storage
+	return &g.storage
 }
 
 func getExpiry(ttl time.Duration, def time.Duration) int64 {

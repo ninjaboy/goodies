@@ -6,7 +6,7 @@ import (
 )
 
 func TestGoodiesAddSetUpdate(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever, "", 0)
+	goodies := NewGoodiesStorage(ExpireNever)
 
 	key := "test"
 	expected := "expected"
@@ -40,14 +40,14 @@ func TestGoodiesAddSetUpdate(testing *testing.T) {
 		testing.Error("Update of non-existent is expected to throw a not found error")
 	}
 
-	keys := goodies.Keys()
-	if len(keys) != 1 || keys[0] != key {
+	keys, err := goodies.Keys()
+	if err != nil || len(keys) != 1 || keys[0] != key {
 		testing.Error("Keys collection doesn't match expected")
 	}
 }
 
 func TestGoodiesExpiry(testing *testing.T) {
-	goodies := NewGoodies(25*time.Millisecond, "", 0)
+	goodies := NewGoodiesStorage(25 * time.Millisecond)
 	goodies.Set("nonexp", "1", ExpireNever)
 	goodies.Set("exp", "1", ExpireDefault)
 	<-time.After(10 * time.Millisecond)
@@ -66,13 +66,13 @@ func TestGoodiesExpiry(testing *testing.T) {
 
 func TestGoodiesPersisted(testing *testing.T) {
 	filename := "goodies_test.dat"
-	goodies := NewGoodies(25*time.Second, filename, 50*time.Second)
+	goodies := NewGoodiesPersistedStorage(25*time.Second, filename, 50*time.Second)
 	expected := "expected"
 	key := "test"
 	goodies.Set(key, expected, ExpireDefault)
 	goodies.Stop()
 	<-time.After(1000 * time.Millisecond)
-	goodies2 := NewGoodies(2*time.Second, filename, 30*time.Second)
+	goodies2 := NewGoodiesPersistedStorage(2*time.Second, filename, 30*time.Second)
 	received, err := goodies2.Get(key)
 	if err != nil || (received != expected) {
 		testing.Error("Basic persistence test failed")
@@ -81,7 +81,7 @@ func TestGoodiesPersisted(testing *testing.T) {
 }
 
 func TestGoodiesNotAListError(testing *testing.T) {
-	goodies := NewGoodies(25*time.Millisecond, "", 0)
+	goodies := NewGoodiesStorage(25 * time.Millisecond)
 	goodies.Set("value", "1", ExpireNever)
 	err := goodies.ListPush("value", "1")
 	if err == nil {
@@ -94,7 +94,7 @@ func TestGoodiesNotAListError(testing *testing.T) {
 }
 
 func TestExpiryApi(testing *testing.T) {
-	goodies := NewGoodies(50*time.Millisecond, "", 0)
+	goodies := NewGoodiesStorage(50 * time.Millisecond)
 	key := "list"
 	err := goodies.ListPush(key, "val")
 	defer goodies.Remove(key)
@@ -131,7 +131,7 @@ func TestExpiryApi(testing *testing.T) {
 }
 
 func TestGoodiesSimpleListOps(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever, "", 0)
+	goodies := NewGoodiesStorage(ExpireNever)
 	key := "list"
 	//ListPush test
 	goodies.ListPush(key, "Where is")
@@ -185,7 +185,7 @@ func TestGoodiesSimpleListOps(testing *testing.T) {
 }
 
 func TestListRemoveByValue(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever, "", 0)
+	goodies := NewGoodiesStorage(ExpireNever)
 	key := "list"
 	s1 := "s1"
 	s2 := "s2"
@@ -233,7 +233,7 @@ func TestListRemoveByValue(testing *testing.T) {
 }
 
 func TestDictOps(testing *testing.T) {
-	goodies := NewGoodies(ExpireNever, "", 0)
+	goodies := NewGoodiesStorage(ExpireNever)
 
 	goodies.Set("val", "1", ExpireDefault)
 	err := goodies.DictSet("val", "val", "1")
