@@ -8,22 +8,24 @@ import (
 	"strings"
 )
 
-type TextOverHttpClient struct {
+type textOverTCPClient struct {
 	isConnected bool
 	connString  string
-	transport   goodies.GoodiesHttpCommandClient
+	transport   goodies.CommandProcessor
 }
 
-func (t *TextOverHttpClient) Connect(address string) error {
+func (t *textOverTCPClient) Connect(address string) error {
+	address = strings.TrimSpace(address)
 	t.connString = address //TODO: add url validation
 	t.isConnected = true
 
-	t.transport = goodies.NewGoodiesHttpCommandClient(address)
+	t.transport = goodies.NewTCPBasedClient(address)
+	//t.transport = goodies.NewGoodiesHttpCommandClient(address)
 	return nil
 }
 
 func main() {
-	client := TextOverHttpClient{}
+	client := textOverTCPClient{}
 	in := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Print("> ")
@@ -35,7 +37,7 @@ func main() {
 	}
 }
 
-func processInput(command string, client *TextOverHttpClient) bool {
+func processInput(command string, client *textOverTCPClient) bool {
 	if strings.HasPrefix(command, "Quit") {
 		fmt.Println("Bye!")
 		return true
@@ -43,7 +45,7 @@ func processInput(command string, client *TextOverHttpClient) bool {
 
 	if strings.HasPrefix(command, "Connect ") {
 		addr := command[len("Connect "):] //TODO: add validation
-		fmt.Println("Connecting to ", addr)
+		fmt.Println("Connecting to", addr)
 		err := client.Connect(addr)
 
 		if err != nil {
@@ -64,8 +66,7 @@ func processInput(command string, client *TextOverHttpClient) bool {
 		fmt.Printf("Command formatted incorrectly: %v\n", err)
 	}
 
-	res := &goodies.CommandResponse{}
-	err = client.transport.Process(*com, res)
+	res := client.transport.Process(*com)
 	if err != nil {
 		fmt.Println("Transport error occurred:", err)
 		return false
@@ -79,7 +80,7 @@ func processInput(command string, client *TextOverHttpClient) bool {
 }
 
 func tryBuildCommand(command string, req *goodies.CommandRequest) error {
-	fields, err := GetFieldsConsideringQuotes(command)
+	fields, err := goodies.ParseQuotedText(command, ' ')
 	if err != nil {
 		return err
 	}
