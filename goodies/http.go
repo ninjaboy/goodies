@@ -39,7 +39,7 @@ type goodiesHTTPServer struct {
 func (s *goodiesHTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		panic("Cannot read incoming request")
+		panic("Cannot read incoming request") //TODO: there are potentially better ways to handle this. Probably just return error
 	}
 	w.Write(s.serveCommandBytes(data))
 }
